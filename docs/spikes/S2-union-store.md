@@ -24,9 +24,10 @@ x86_64. (aarch64 is Pis only, and they run only Debian.) It checks:
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | RHEL 10.2 x86_64 | 6.12.0-211.7.3.el10_2 | 2.40.2 | 2.30.0 | ok | ok | ok | ok | **FAIL** | ok | ok | 651 µs / 677 µs |
 | Debian 13 x86_64 | 6.12.95+deb13 | 2.40.2-5 | 2.35.2¹ | ok | ok | ok | ok | **FAIL** | ok | ok | 1.3 ms / 1.3 ms |
-| Debian 13 arm64 (pi7) | | | | | | | | | | | pending: no SSH access |
+| Debian 13 arm64 (pi7) | 6.18.50+rpt-rpi-v8 | 2.40.2-5 | 2.30.0 | ok | ok | ok | ok | **FAIL** | ok | ok | 6.9 ms / 7.8 ms² |
 
 ¹ Upgraded from 2.30.0 on this VM while isolating the read-only-store failure; same results.
+² Within run-to-run variation (±1.2 / ±1.5 ms). pi7 was returned to a plain `/nix/store` afterwards; cvmfs, mergerfs and Nix stay installed.
 
 Exec through the union costs nothing measurable. The revision flip works with no remount, no ESTALE
 and no dmesg noise, which was the main risk ADR 0002 accepted.
@@ -53,7 +54,7 @@ and no dmesg noise, which was the main risk ADR 0002 accepted.
 
 ## Open: sandboxed local builds fail on the union
 
-Fails on both hosts and on both Nix 2.30 and 2.35. Unsandboxed builds work. Nix places the build
+Fails on all three hosts (x86_64 and arm64) and on both Nix 2.30 and 2.35. Unsandboxed builds work. Nix places the build
 chroot under the real store dir (`/nix/store/<drv>.chroot`), which is the mergerfs mount. Inside the
 sandbox, `/` and `/nix/store` are bind mounts of that FUSE subtree. `stat` works, but `readdir` and
 create fail (`sh: can't create /nix/store/…: nonexistent directory`; inputs such as `/bin/sh` are
@@ -71,4 +72,4 @@ builds on union hosts are rare. Options:
   propagation) against mergerfs, or upstream.
 - Make `cvmfs_nix_mode=cache` primary instead.
 
-Result: **conditional go on x86_64.** Everything except sandboxed local builds works. arm64 is pending.
+Result: **conditional go on all three targets.** Everything except sandboxed local builds works.
