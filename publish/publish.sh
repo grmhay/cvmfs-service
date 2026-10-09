@@ -65,6 +65,14 @@ paths=("${outs[@]}")
 log "copying ${#paths[@]} profile closures into the lower store"
 nix copy "${nix_opts[@]}" --to "local?root=$root" "${paths[@]}"
 
+# Clients open the Lower Store read-only, which SQLite does as immutable and
+# so ignores a -wal file: fold the WAL into db.sqlite and leave the DB out of
+# WAL mode, or clients see an empty or stale store (spike S2).
+log "checkpointing the lower store DB"
+db="$root/nix/var/nix/db/db.sqlite"
+sqlite3 "$db" 'PRAGMA wal_checkpoint(TRUNCATE); PRAGMA journal_mode=DELETE;' >/dev/null
+test ! -s "$db-wal"
+
 log "copying the same closures into the fallback binary cache"
 nix copy "${nix_opts[@]}" --to "file://$root/cache?compression=none" "${paths[@]}"
 

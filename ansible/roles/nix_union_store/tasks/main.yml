@@ -3,6 +3,14 @@
   ansible.builtin.set_fact:
     nix_system: "{{ {'x86_64': 'x86_64-linux', 'aarch64': 'aarch64-linux'}[ansible_architecture] }}"
 
+# The Debian 13 template ships without curl (spike S1).
+- name: Install curl for the Nix installer
+  become: true
+  ansible.builtin.package:
+    name: curl
+    state: present
+  when: cvmfs_nix_mode != "thin"
+
 - name: Install Nix (Determinate, pinned) if missing
   become: true
   ansible.builtin.shell: |

@@ -67,7 +67,7 @@
         packages = profiles // { default = profiles.profile-base; };
 
         apps = {
-          publish = mkApp "publish" [ pkgs.nix pkgs.git pkgs.jq pkgs.coreutils ];
+          publish = mkApp "publish" [ pkgs.nix pkgs.git pkgs.jq pkgs.coreutils pkgs.sqlite ];
           promote = mkApp "promote" [ pkgs.nix pkgs.git pkgs.jq pkgs.coreutils ];
           verify-origin = mkApp "verify-origin" [ pkgs.curl pkgs.openssl pkgs.jq pkgs.coreutils ];
         };

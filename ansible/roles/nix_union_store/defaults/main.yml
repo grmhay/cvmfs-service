@@ -20,6 +20,17 @@ nix_installer_version: "3.8.0"
 nix_installer_url: "https://install.determinate.systems/nix/tag/v{{ nix_installer_version }}"
 
 nix_rw_root: /nix/.rw-store
+
+# The store nix-daemon serves in union mode (clients use store = daemon).
+# Lower Store: the Repository's /nix (store + db.sqlite), read-only — the
+# Publisher leaves db.sqlite checkpointed, out of WAL mode, because a read-only
+# store opens it immutable and ignores a -wal file (spike S2). Upper layer: the
+# mergerfs RW branch. check-mount=false because the merged mount is mergerfs,
+# not overlayfs (ADR 0002). No root=/: it makes the real store dir "//nix/store",
+# which Nix takes for a chroot store and redirects every build output (spike S2). Verify the URL grammar against `nix help-stores`
+# whenever nix_installer_version is bumped.
+nix_overlay_store_url: "local-overlay://?lower-store=local%3Froot%3D%2Fcvmfs%2F{{ cvmfs_repository }}%26read-only%3Dtrue&upper-layer={{ nix_rw_root }}/store&check-mount=false"
+
 nix_gc_older_than: 30d
 nix_min_free: 2G
 nix_max_free: 10G

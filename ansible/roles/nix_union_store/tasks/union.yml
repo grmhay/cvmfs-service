@@ -37,7 +37,9 @@
     state: directory
     mode: "0755"
 
-- name: Order nix-daemon after the union mount
+# The daemon alone opens the overlay store; nix.conf points clients at it
+# with store = daemon. % is doubled for systemd.
+- name: Run nix-daemon on the overlay store, after the union mount
   become: true
   ansible.builtin.copy:
     dest: /etc/systemd/system/nix-daemon.service.d/union-store.conf
@@ -46,7 +48,13 @@
       [Unit]
       Requires=nix-store.mount
       After=nix-store.mount
-  notify: Reload systemd
+
+      [Service]
+      ExecStart=
+      ExecStart=@/nix/var/nix/profiles/default/bin/nix-daemon nix-daemon --daemon --option store {{ nix_overlay_store_url | replace('%', '%%') }}
+  notify:
+    - Reload systemd
+    - Restart nix-daemon
 
 - name: Flush handlers so the units are loaded
   ansible.builtin.meta: flush_handlers
@@ -66,6 +74,9 @@
     enabled: true
     state: started
 
-- name: The daemon sees the overlay store
-  ansible.builtin.command: nix store info --store auto
+# A path that exists only in the Lower Store is valid only through the overlay.
+- name: The daemon serves the Lower Store through the overlay
+  ansible.builtin.command: >-
+    nix path-info --store daemon
+    /cvmfs/{{ cvmfs_repository }}/profiles/{{ nix_channel }}/{{ nix_group }}/{{ nix_system }}
   changed_when: false
