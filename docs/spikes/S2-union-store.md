@@ -52,24 +52,43 @@ and no dmesg noise, which was the main risk ADR 0002 accepted.
    a chroot store, redirecting every build output to `//nix/store/<drv>.chroot/root/…` ("failed to
    produce output path"). Dropped from the role and the script.
 
-## Open: sandboxed local builds fail on the union
+## Sandboxed local builds fail on the union: cause found
 
-Fails on all three hosts (x86_64 and arm64) and on both Nix 2.30 and 2.35. Unsandboxed builds work. Nix places the build
-chroot under the real store dir (`/nix/store/<drv>.chroot`), which is the mergerfs mount. Inside the
-sandbox, `/` and `/nix/store` are bind mounts of that FUSE subtree. `stat` works, but `readdir` and
-create fail (`sh: can't create /nix/store/…: nonexistent directory`; inputs such as `/bin/sh` are
-"No such file or directory").
+Fails on all three hosts (x86_64 and arm64) and on both Nix 2.30 and 2.35; unsandboxed builds work.
 
-Not the cause:
-- user namespaces: an unprivileged user in `unshare -Ur` can list and create through the union;
-- FUSE bind mounts as such: a bind mount of a union subdirectory in a mount namespace works for root.
+**Cause.** Nix builds the sandbox under the real store dir: `<store>/<drv>.chroot` (mode **0700**,
+root-only; `linux-derivation-builder.cc:313` in 2.30, same on 2.35.2 as observed) with `root/` inside
+it (0750 root:nixbld). Then it bind-mounts the inputs into `root/` and `pivot_root`s the builder, which
+runs as a `nixbld` user. On a kernel filesystem that is fine: once pivoted, path walks start at the
+`root/` inode and never traverse `.chroot`. mergerfs is a path-based FUSE filesystem that runs every
+operation as the calling uid (`setfsuid`; it has no option not to, see its man page under "How are
+the ACLs..."/"why run as root") and re-resolves the *full* path on its branches:
+`<branch>/<drv>.chroot/root/bin/sh`. The build user cannot traverse the 0700 `.chroot`, mergerfs's
+search policy treats the EACCES as "not on this branch", and the kernel gets **ENOENT**. Cached dentries
+(1 s) still answer `stat`, which is why `[ -d /nix/store ]` passed while `readdir`, `open` and `exec`
+failed.
 
-Substituted packages are unaffected; only derivations that must be built locally hit this. Fleet
-hosts consume published Profiles, while the Publisher and the builders use plain stores, so local
-builds on union hosts are rare. Options:
-- `sandbox = false` on union-mode hosts only.
-- Find the cause: Nix's sandbox mount sequence (`pivot_root` into a FUSE subtree, `MS_PRIVATE`
-  propagation) against mergerfs, or upstream.
-- Make `cvmfs_nix_mode=cache` primary instead.
+**Proof.**
+- Minimal, no Nix: the same 0700 parent / 0750 root:nixbld child, bind-mounted, read as `nixbld1`.
+  Plain xfs: works. mergerfs: `ls` empty, `cat` and create → ENOENT. mergerfs with the parent at
+  0711: works.
+- Live: a watcher that `chmod 711`s `<drv>.chroot` the instant it appears (inotify on the RW branch)
+  makes the sandboxed build **succeed** on both Nix 2.30 (RHEL) and 2.35 (Debian).
+- Live: with `build-users-group = ""` (the builder runs as uid 0 inside the namespaced sandbox, so
+  mergerfs resolves paths as root) sandboxed builds succeed, including `nixpkgs#lolcat`.
 
-Result: **conditional go on all three targets.** Everything except sandboxed local builds works.
+**Fixes.**
+1. Upstream Nix: make the chroot parent traversable by the build group, e.g. `0710` owned
+   `root:<build gid>` (or `0711`). `root/` already denies other users. One-line change; the right fix.
+2. Interim on union-mode hosts, pick one in the role (`nix_union_sandbox`):
+   - `sandbox = false` (keeps build users; loses namespace isolation) — the role default.
+   - `build-users-group =` (keeps the sandbox; builds run as root inside it, which the Nix manual
+     discourages).
+3. Not viable: a mergerfs option (none exists), moving the chroot (its location is not configurable;
+   `build-dir` only moves the build directory), pointing `real` at the RW branch (lower-only inputs
+   become unreadable).
+
+The Publisher and the builders have plain stores and keep the sandbox either way. Fleet hosts
+consume published Profiles; local builds there are the exception.
+
+Result: **go on all three targets.** The one failure (sandboxed local builds) is understood, has an interim role setting and a one-line upstream fix.

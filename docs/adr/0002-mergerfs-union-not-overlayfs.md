@@ -43,3 +43,9 @@ flip is simply new files on the RO branch — no remount, no stale entries. The 
 - mergerfs must be present before Nix starts: `nix-store.mount` is ordered before `nix-daemon`, and
   the CVMFS mount is static (fstab, no autofs) so `RequiresMountsFor` can hold it.
 - RHEL 10 has no distro mergerfs package; the role installs the upstream RPM.
+- **Nix's build sandbox does not work on the union** (spike S2): Nix creates the chroot as
+  `<store>/<drv>.chroot` with mode 0700, and mergerfs resolves every path on its branches as the build
+  user, so the sandboxed builder gets ENOENT for everything. Until upstream makes that directory
+  traversable by the build group, union-mode hosts run with `sandbox = false`
+  (`nix_union_sandbox: "false"`; the alternative `build-users-group =` keeps the sandbox but builds as
+  root). The Publisher and the builders have plain stores and keep the sandbox.

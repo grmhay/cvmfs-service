@@ -31,6 +31,14 @@ nix_rw_root: /nix/.rw-store
 # whenever nix_installer_version is bumped.
 nix_overlay_store_url: "local-overlay://?lower-store=local%3Froot%3D%2Fcvmfs%2F{{ cvmfs_repository }}%26read-only%3Dtrue&upper-layer={{ nix_rw_root }}/store&check-mount=false"
 
+# Nix's build sandbox cannot work on the union: the chroot is created under the
+# store as <drv>.chroot (0700) and mergerfs resolves paths as the build user
+# (spike S2, ADR 0002). Until upstream fixes the mode, one of:
+#   "false"  — no sandbox, build users kept (default)
+#   "root"   — sandbox kept, no build users: builds run as root inside it
+#   "true"   — sandbox on; local builds on union hosts fail until the upstream fix
+nix_union_sandbox: "false"
+
 nix_gc_older_than: 30d
 nix_min_free: 2G
 nix_max_free: 10G
