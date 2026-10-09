@@ -13,7 +13,7 @@ publisher_secrets_file: "{{ playbook_dir }}/../../secrets/publisher.enc.yaml"
 
 # Clients' URL, recorded in the repository at mkfs time (-w).
 cvmfs_stratum0_url: "http://cache1.hayweb.org/cvmfs/{{ cvmfs_repository }}"
-cvmfs_s3_host: "minio.hayweb.org:9000"   # S3 API port — confirm in RUNBOOK §1.4
+cvmfs_s3_host: "minio.hayweb.org:9000"   # S3 API port (confirmed in S1; the console is 9002)
 cvmfs_s3_bucket: cvmfs
 cvmfs_repository_ttl: 240                # seconds; default (Q16)
 

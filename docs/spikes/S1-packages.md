@@ -18,6 +18,6 @@ Findings:
 
 Still to do:
 - [x] Run on pi7 (Debian 13 arm64).
-- [ ] MinIO S3 API port on filer1 (the console is 9002). Record in `server/minio/RUNBOOK.md` §1.4 and the role defaults.
+- [x] MinIO S3 API port on filer1: **9000** (`https://filer1:9000/minio/health/live` → 200, `Server: MinIO`); the console is 9002. Recorded in `server/minio/RUNBOOK.md` §1.4; the role defaults already used 9000.
 
-Result: **pass on all three targets** (MinIO S3 API port still to record)
+Result: **pass** — all three targets, S3 API port known.

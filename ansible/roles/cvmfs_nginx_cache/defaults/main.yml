@@ -2,7 +2,7 @@
 # cvmfs_nginx_cache: cache1.hayweb.org — nginx reverse cache in front of the
 # Origin bucket (ADR 0003). Plain HTTP to clients; CVMFS content is signed.
 cvmfs_repository: nix.hayweb.org
-cache_origin_url: "https://minio.hayweb.org:9000"   # S3 API port — confirm in RUNBOOK §1.4
+cache_origin_url: "https://minio.hayweb.org:9000"   # S3 API port (confirmed in S1; the console is 9002)
 cache_bucket: cvmfs
 cache_path: /var/cache/nginx/cvmfs
 cache_max_size: 100g

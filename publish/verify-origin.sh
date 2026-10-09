@@ -3,7 +3,7 @@
 # anonymous GET on the bucket, and the manifest through the Cache. The roles
 # only VERIFY the bucket — it is created by hand (server/minio/RUNBOOK.md).
 #
-# Env: CVMFS_REPOSITORY; MINIO_URL (https://minio.hayweb.org:<api-port>);
+# Env: CVMFS_REPOSITORY; MINIO_URL (https://minio.hayweb.org:9000);
 #      CACHE_URL (http://cache1.hayweb.org); BUCKET (cvmfs)
 set -euo pipefail
 
