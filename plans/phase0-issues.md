@@ -27,7 +27,7 @@ Follow `server/minio/RUNBOOK.md` §2 after the rename/cert issue below lands: `c
 Blocked by: the ops-repo cert issue.
 
 ## [cvmfs-service] Create publisher, cache1 and canary VMs with vm-service
-`vm_service create-vm` from the packer templates (debian13 = 9000, rhel10 = 9010). vm-service has no disk-size option; check the template disk and add a data disk or a vm-service disk-resize feature if needed: `publisher` (Debian 13 x86_64, 4 vCPU / 8 GB / 100 GB), `cache1` (Debian 13, 2 vCPU / 4 GB / 120 GB), `nixcanary-deb1` (Debian 13), `nixcanary-rhel1` (RHEL 10). Register all four in NetBox with the roles/tags from the NetBox issue. No software yet — Phase 1/2 playbooks do that.
+`vm_service create-vm` from the packer templates (debian13 = 9000, rhel10 = 9010), with `--disk` for the big ones. The templates are 20 GB and do not grow the guest LV yet, so this is blocked by grmhay/packer-service#98: `publisher` (Debian 13 x86_64, 4 vCPU / 8 GB / 100 GB), `cache1` (Debian 13, 2 vCPU / 4 GB / 120 GB), `nixcanary-deb1` (Debian 13), `nixcanary-rhel1` (RHEL 10). Register all four in NetBox with the roles/tags from the NetBox issue. No software yet — Phase 1/2 playbooks do that.
 
 ---
 
@@ -50,6 +50,7 @@ Done when: `ansible-inventory --graph` shows `tag_nix_builder`, `tag_nix_canary`
 ---
 
 ## Follow-ups (not Phase 0)
+- [packer-service] #98 — grow the root LV/filesystem to the disk size on boot (filed; blocks the publisher/cache1 VMs).
 - [packer-service] Bake `cvmfs_client` + `nix_union_store` (no group/channel) into the Debian 13 and RHEL 10 templates — Phase 3.
 - [cvmfs-service] `vm-service` as a flake input → `profile-docker-host`; retire the curl install — Phase 3.
 - [ansible-lab-config] Caddy redundancy for skyline's public ingress — out of scope here, separate decision.
