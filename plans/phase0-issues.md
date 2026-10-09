@@ -1,7 +1,8 @@
 # Phase 0 issues (prerequisites + spikes)
 
 Each heading is one GitHub issue; the repo it belongs to is in brackets. Labels: `needs-triage` on
-creation (your five-label vocabulary); S1–S3 are `ready-for-human` from the start — they need VMs.
+creation. S1–S3 and the VM issue are `ready-for-agent`: VMs come from vm-service (`create-vm` / `destroy-vm`), not a human.
+Only the MinIO bucket issue is `ready-for-human`, because it is created by hand (decision Q4c).
 
 ---
 
@@ -25,8 +26,8 @@ Done when: checklist complete; any config deltas folded into `cvmfs_publisher` /
 Follow `server/minio/RUNBOOK.md` §2 after the rename/cert issue below lands: `cvmfs` bucket, anonymous `s3:GetObject` on `cvmfs/*` (no listing), `cvmfs-publisher` service account scoped to the bucket; keys into `secrets/publisher.enc.yaml`. Verify with `nix run .#verify-origin` from a LAN host and a cloud host.
 Blocked by: the ops-repo cert issue.
 
-## [cvmfs-service] Publisher, cache1 and canary VMs
-Proxmox VMs from the packer templates: `publisher` (Debian 13 x86_64, 4 vCPU / 8 GB / 100 GB), `cache1` (Debian 13, 2 vCPU / 4 GB / 120 GB), `nixcanary-deb1` (Debian 13), `nixcanary-rhel1` (RHEL 10). Register all four in NetBox with the roles/tags from the NetBox issue. No software yet — Phase 1/2 playbooks do that.
+## [cvmfs-service] Create publisher, cache1 and canary VMs with vm-service
+`vm_service create-vm` from the packer templates (debian13 = 9000, rhel10 = 9010). vm-service has no disk-size option; check the template disk and add a data disk or a vm-service disk-resize feature if needed: `publisher` (Debian 13 x86_64, 4 vCPU / 8 GB / 100 GB), `cache1` (Debian 13, 2 vCPU / 4 GB / 120 GB), `nixcanary-deb1` (Debian 13), `nixcanary-rhel1` (RHEL 10). Register all four in NetBox with the roles/tags from the NetBox issue. No software yet — Phase 1/2 playbooks do that.
 
 ---
 

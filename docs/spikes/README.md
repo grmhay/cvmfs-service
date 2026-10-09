@@ -1,6 +1,6 @@
 # Spikes (Phase 0, go/no-go)
 
-Throwaway VMs; record results here, then write/confirm the ADRs.
+Throwaway VMs are created and destroyed with vm-service (`vm_service create-vm … --no-backup` / `destroy-vm`; templates debian13 = 9000, rhel10 = 9010, x86_64 only). aarch64 checks run on `pi7`. No RHEL 10 aarch64 host exists yet. Record results here, then write or confirm the ADRs.
 
 | Spike | Question | Go criterion |
 |---|---|---|
