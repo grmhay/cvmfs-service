@@ -1,0 +1,6 @@
+---
+- name: Reload cvmfs
+  become: true
+  ansible.builtin.command: cvmfs_config reload
+  changed_when: true
+  failed_when: false   # nothing mounted yet on first run

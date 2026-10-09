@@ -1,0 +1,9 @@
+[Unit]
+Description=Re-sign the {{ cvmfs_repository }} whitelist (expires after 30 days)
+
+[Service]
+Type=oneshot
+# The master key is NOT on this host (secrets/README.md). This unit only
+# re-signs when it has been placed by docs/runbooks/resign.md; otherwise it
+# exits non-zero so the failure is visible in Loki.
+ExecStart=/bin/bash -c 'test -f /etc/cvmfs/keys/{{ cvmfs_repository }}.masterkey && cvmfs_server resign {{ cvmfs_repository }}'

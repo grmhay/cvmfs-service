@@ -1,0 +1,22 @@
+---
+# Fallback mode: ordinary local /nix, the Repository's Binary Cache as a
+# substituter, and a timer that installs the Group Profile from it.
+
+- name: Install the fleet-profile puller
+  become: true
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    mode: "0644"
+  loop:
+    - fleet-profile.service
+    - fleet-profile.timer
+  notify: Reload systemd
+
+- name: Enable the puller
+  become: true
+  ansible.builtin.systemd:
+    name: fleet-profile.timer
+    enabled: true
+    state: started
+    daemon_reload: true

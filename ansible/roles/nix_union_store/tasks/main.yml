@@ -1,0 +1,78 @@
+---
+- name: Map the machine architecture to a Nix system
+  ansible.builtin.set_fact:
+    nix_system: "{{ {'x86_64': 'x86_64-linux', 'aarch64': 'aarch64-linux'}[ansible_architecture] }}"
+
+- name: Install Nix (Determinate, pinned) if missing
+  become: true
+  ansible.builtin.shell: |
+    set -euo pipefail
+    curl -fsSL "{{ nix_installer_url }}" | sh -s -- install linux --no-confirm --init systemd
+  args:
+    creates: /nix/receipt.json
+    executable: /bin/bash
+  when: cvmfs_nix_mode != "thin"
+
+# -- thin and cache modes need no mergerfs; union does.
+- name: Install mergerfs (Debian)
+  become: true
+  ansible.builtin.package:
+    name: mergerfs
+    state: present
+  when: cvmfs_nix_mode == "union" and ansible_os_family == "Debian"
+
+- name: Install mergerfs (RedHat, upstream RPM)
+  become: true
+  ansible.builtin.dnf:
+    name: "{{ mergerfs_rpm_url }}"
+    disable_gpg_check: true
+    state: present
+  when: cvmfs_nix_mode == "union" and ansible_os_family == "RedHat"
+
+- name: Write nix.conf
+  become: true
+  ansible.builtin.template:
+    src: nix.conf.j2
+    dest: /etc/nix/nix.conf
+    mode: "0644"
+  notify: Restart nix-daemon
+
+- name: Union-store assembly
+  ansible.builtin.include_tasks: union.yml
+  when: cvmfs_nix_mode == "union"
+
+- name: Cache-mode profile puller
+  ansible.builtin.include_tasks: cache.yml
+  when: cvmfs_nix_mode == "cache"
+
+- name: Thin-mode bind mount
+  ansible.builtin.include_tasks: thin.yml
+  when: cvmfs_nix_mode == "thin"
+
+- name: Put the Group Profile on PATH
+  become: true
+  ansible.builtin.template:
+    src: cvmfs-nix.sh.j2
+    dest: /etc/profile.d/cvmfs-nix.sh
+    mode: "0644"
+
+- name: Weekly GC of the local branch
+  become: true
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    mode: "0644"
+  loop:
+    - nix-gc.service
+    - nix-gc.timer
+  when: cvmfs_nix_mode != "thin"
+  notify: Reload systemd
+
+- name: Enable the GC timer
+  become: true
+  ansible.builtin.systemd:
+    name: nix-gc.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: cvmfs_nix_mode != "thin"

@@ -1,0 +1,6 @@
+# Nested catalogs for nix.hayweb.org (installed at /cvmfs/<repo>/.cvmfsdirtab).
+# One catalog per store path: a client loads only the catalogs for the paths
+# it touches, so the root catalog stays small as the store grows.
+/nix/store/*
+/cache/*
+/profiles/*/*

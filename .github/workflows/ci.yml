@@ -1,0 +1,36 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+jobs:
+  profiles:
+    # Builds every Group Profile for x86_64 and evaluates the aarch64 ones.
+    # GitHub-hosted runners cannot reach the LAN and have no aarch64 builders;
+    # the Publisher performs the real aarch64 build before publishing.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@v16
+      - uses: DeterminateSystems/magic-nix-cache-action@v8
+      - name: Build x86_64 profiles
+        run: nix build -L '.#profile-base' '.#profile-docker-host' '.#profile-proxmox-node' '.#profile-cloud' '.#profile-builder'
+      - name: Evaluate aarch64 profiles
+        run: |
+          for g in base docker-host proxmox-node cloud builder; do
+            nix eval --raw ".#packages.aarch64-linux.profile-$g.drvPath"; echo
+          done
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@v16
+      - name: shellcheck
+        run: nix run nixpkgs#shellcheck -- publish/*.sh spikes/*.sh
+      - name: ansible-lint
+        run: cd ansible && nix run nixpkgs#ansible-lint -- --offline playbooks/ roles/
+      - name: yamllint
+        run: nix run nixpkgs#yamllint -- ansible/ .github/

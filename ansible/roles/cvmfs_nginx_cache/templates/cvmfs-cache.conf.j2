@@ -1,0 +1,41 @@
+# Managed by cvmfs-service (role cvmfs_nginx_cache). ADR 0003.
+#
+# Clients: CVMFS_SERVER_URL=http://{{ inventory_hostname }}/cvmfs/@fqrn@, CVMFS_HTTP_PROXY=DIRECT.
+# Everything under data/ is content-addressed and immutable -> cache for months.
+# The three manifests at the repository root change on every publish -> 30 s.
+
+proxy_cache_path {{ cache_path }} levels=1:2 keys_zone=cvmfs:64m
+                 max_size={{ cache_max_size }} inactive={{ cache_inactive }} use_temp_path=off;
+
+log_format cvmfs '$remote_addr [$time_local] "$request" $status $body_bytes_sent '
+                 '$upstream_cache_status $request_time';
+
+server {
+    listen {{ cache_listen_port }} default_server;
+    server_name {{ inventory_hostname }} cache1.hayweb.org;
+    access_log /var/log/nginx/cvmfs-access.log cvmfs;
+
+    # Mutable manifests: short TTL, never serve a stale manifest on error.
+    location ~ ^/cvmfs/[^/]+/\.cvmfs(published|whitelist|reflog)$ {
+        proxy_pass {{ cache_origin_url }}/{{ cache_bucket }}$uri;
+        proxy_cache cvmfs;
+        proxy_cache_valid 200 30s;
+        proxy_cache_valid 404 5s;
+        proxy_cache_lock on;
+        include /etc/nginx/cvmfs-upstream.inc;
+    }
+
+    # Immutable objects (data/XX/..., catalogs, chunks).
+    location /cvmfs/ {
+        proxy_pass {{ cache_origin_url }}/{{ cache_bucket }}/;
+        proxy_cache cvmfs;
+        proxy_cache_valid 200 {{ cache_inactive }};
+        proxy_cache_valid 404 5s;
+        proxy_cache_lock on;
+        proxy_cache_lock_timeout 60s;
+        proxy_cache_use_stale error timeout updating http_500 http_502 http_503 http_504;
+        include /etc/nginx/cvmfs-upstream.inc;
+    }
+
+    location = /healthz { return 200 "ok\n"; }
+}

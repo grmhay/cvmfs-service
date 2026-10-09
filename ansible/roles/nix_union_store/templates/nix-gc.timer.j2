@@ -1,0 +1,10 @@
+[Unit]
+Description=Weekly local Nix GC
+
+[Timer]
+OnCalendar=Sun *-*-* 04:00:00
+RandomizedDelaySec=2h
+Persistent=true
+
+[Install]
+WantedBy=timers.target

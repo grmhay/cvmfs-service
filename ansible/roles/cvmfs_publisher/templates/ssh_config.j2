@@ -1,0 +1,10 @@
+# Managed by cvmfs-service (role cvmfs_publisher).
+{% for b in nix_remote_builders %}
+Host {{ b.host }}
+    User {{ nix_builder_user }}
+    IdentityFile ~/.ssh/id_nixbuild
+    IdentitiesOnly yes
+{% endfor %}
+Host github.com
+    IdentityFile ~/.ssh/id_deploy
+    IdentitiesOnly yes

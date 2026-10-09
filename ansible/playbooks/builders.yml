@@ -1,0 +1,9 @@
+---
+# pi5, pi6 — NetBox tag nix-builder.
+- name: Remote builders (aarch64)
+  hosts: tag_nix_builder
+  roles:
+    - cvmfs_client
+    - role: nix_union_store
+      vars: { nix_group: builder, cvmfs_quota_limit_mb: 50000 }
+    - nix_builder

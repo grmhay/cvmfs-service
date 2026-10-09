@@ -1,0 +1,10 @@
+[Unit]
+Description=Run the publish reconciler every {{ publisher_interval }}
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec={{ publisher_interval }}
+Persistent=true
+
+[Install]
+WantedBy=timers.target

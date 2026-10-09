@@ -1,0 +1,4 @@
+{
+  "_comment": "Audit trail of the stable channel. Written by `nix run .#promote -- --commit`; the Repository's /profiles/stable symlinks are the live truth, this file is the git history of them.",
+  "stable": {}
+}

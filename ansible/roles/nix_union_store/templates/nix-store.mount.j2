@@ -1,0 +1,16 @@
+# Managed by cvmfs-service (role nix_union_store). Unit name must be the
+# escaped mount path: /nix/store -> nix-store.mount.
+[Unit]
+Description=Nix union store (mergerfs over {{ cvmfs_repository }})
+RequiresMountsFor=/cvmfs/{{ cvmfs_repository }} {{ nix_rw_root }}
+After=network-online.target
+Wants=network-online.target
+
+[Mount]
+What={{ nix_rw_root }}/store=RW:/cvmfs/{{ cvmfs_repository }}/nix/store=RO
+Where=/nix/store
+Type=fuse.mergerfs
+Options={{ mergerfs_options }}
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,14 @@
+[Unit]
+Description=Publish cvmfs-service master to {{ cvmfs_repository }} (canary)
+Wants=network-online.target
+After=network-online.target nix-daemon.socket
+
+[Service]
+Type=oneshot
+User={{ publisher_user }}
+Group={{ publisher_user }}
+WorkingDirectory={{ publisher_repo_dir }}
+Environment=PUBLISH_STATE_DIR={{ publisher_state_dir }}
+Environment=PATH=/nix/var/nix/profiles/default/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart={{ publisher_repo_dir }}/publish/reconcile-publish.sh
+TimeoutStartSec=3h

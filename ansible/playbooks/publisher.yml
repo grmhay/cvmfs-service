@@ -1,0 +1,11 @@
+---
+# The Publisher is also a union-mode client of its own repository, which is
+# how Phase 1 is verified before any other host mounts it.
+- name: Publisher (Stratum 0)
+  hosts: nix_publisher
+  roles:
+    - role: cvmfs_client
+      vars: { cvmfs_quota_limit_mb: 50000 }
+    - role: nix_union_store
+      vars: { nix_group: builder, nix_channel: canary }
+    - role: cvmfs_publisher

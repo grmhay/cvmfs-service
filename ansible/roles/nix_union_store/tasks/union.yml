@@ -1,0 +1,71 @@
+---
+# Assemble /nix/store as a mergerfs union. The Determinate installer created a
+# plain /nix/store on the root filesystem; on first run its contents move to
+# the RW branch so nothing already installed is lost.
+
+- name: Is /nix/store already a mergerfs mount?
+  ansible.builtin.command: findmnt -n -o FSTYPE /nix/store
+  register: _store_fstype
+  changed_when: false
+  failed_when: false
+
+- name: Migrate the installer's /nix/store to the RW branch (first run only)
+  become: true
+  ansible.builtin.shell: |
+    set -euo pipefail
+    systemctl stop nix-daemon.socket nix-daemon.service || true
+    mkdir -p {{ nix_rw_root }}
+    mv /nix/store {{ nix_rw_root }}/store
+    mkdir -p /nix/store
+  args:
+    creates: "{{ nix_rw_root }}/store"
+    executable: /bin/bash
+  when: _store_fstype.stdout != "fuse.mergerfs"
+
+- name: Install the nix-store.mount unit
+  become: true
+  ansible.builtin.template:
+    src: nix-store.mount.j2
+    dest: /etc/systemd/system/nix-store.mount
+    mode: "0644"
+  notify: Reload systemd
+
+- name: Ensure the drop-in directory exists
+  become: true
+  ansible.builtin.file:
+    path: /etc/systemd/system/nix-daemon.service.d
+    state: directory
+    mode: "0755"
+
+- name: Order nix-daemon after the union mount
+  become: true
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/nix-daemon.service.d/union-store.conf
+    mode: "0644"
+    content: |
+      [Unit]
+      Requires=nix-store.mount
+      After=nix-store.mount
+  notify: Reload systemd
+
+- name: Flush handlers so the units are loaded
+  ansible.builtin.meta: flush_handlers
+
+- name: Mount the union store
+  become: true
+  ansible.builtin.systemd:
+    name: nix-store.mount
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Start the daemon on top of it
+  become: true
+  ansible.builtin.systemd:
+    name: nix-daemon.socket
+    enabled: true
+    state: started
+
+- name: The daemon sees the overlay store
+  ansible.builtin.command: nix store info --store auto
+  changed_when: false

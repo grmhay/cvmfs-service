@@ -1,0 +1,7 @@
+result
+result-*
+.direnv/
+secrets/*.yaml
+!secrets/*.enc.yaml
+ansible/*.retry
+__pycache__/

@@ -1,0 +1,6 @@
+[Unit]
+Description=Garbage-collect the local Nix branch (lower store is never touched)
+
+[Service]
+Type=oneshot
+ExecStart=/nix/var/nix/profiles/default/bin/nix-collect-garbage --delete-older-than {{ nix_gc_older_than }}

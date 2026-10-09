@@ -1,0 +1,30 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommits"
+  ],
+  "labels": ["renovate"],
+  "nix": {
+    "enabled": true
+  },
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 6am on monday"],
+    "description": "Weekly `nix flake update`. CI builds x86_64 and evaluates aarch64; a green check auto-merges and the Publisher does the real aarch64 build before anything ships (decision Q15)."
+  },
+  "packageRules": [
+    {
+      "description": "Lockfile maintenance (nixpkgs) auto-merges on green CI",
+      "matchUpdateTypes": ["lockFileMaintenance"],
+      "automerge": true
+    },
+    {
+      "description": "Service flake inputs (github:grmhay/*) always get a human",
+      "matchDatasources": ["github-tags"],
+      "matchPackagePatterns": ["^grmhay/"],
+      "automerge": false
+    }
+  ]
+}

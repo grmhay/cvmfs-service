@@ -1,0 +1,3 @@
+# Managed by cvmfs-service (role cvmfs_client).
+CVMFS_SERVER_URL="{{ cvmfs_server_urls | join(';') }}"
+CVMFS_PUBLIC_KEY=/etc/cvmfs/keys/{{ cvmfs_repository }}.pub

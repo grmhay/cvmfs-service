@@ -1,0 +1,21 @@
+# Managed by cvmfs-service (role nix_union_store, mode {{ cvmfs_nix_mode }}).
+build-users-group = nixbld
+trusted-users = root @wheel {{ nix_extra_trusted_users | default('') }}
+auto-optimise-store = false
+min-free = {{ nix_min_free }}
+max-free = {{ nix_max_free }}
+{% if cvmfs_nix_mode == "union" %}
+experimental-features = nix-command flakes local-overlay-store
+# Lower store: the Repository's /nix (store + db.sqlite), read-only (immutable SQLite).
+# Upper layer: the mergerfs RW branch. check-mount=false because the merged
+# mount is mergerfs, not overlayfs (ADR 0002). Verify the URL grammar against
+# `nix help-stores` whenever nix_installer_version is bumped.
+store = local-overlay://?root=/&lower-store=local%3Froot%3D%2Fcvmfs%2F{{ cvmfs_repository }}%26read-only%3Dtrue&upper-layer={{ nix_rw_root }}/store&check-mount=false
+{% elif cvmfs_nix_mode == "cache" %}
+experimental-features = nix-command flakes
+# The Repository's binary cache first (local, on-demand through CVMFS), then upstream.
+substituters = file:///cvmfs/{{ cvmfs_repository }}/cache https://cache.nixos.org
+require-sigs = false
+{% else %}
+experimental-features = nix-command flakes
+{% endif %}

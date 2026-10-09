@@ -1,0 +1,76 @@
+---
+# Debian 13 and RHEL 10, x86_64 and aarch64 (CVMFS 2.14 ships all four).
+
+- name: Install the cernvm release package (Debian)
+  become: true
+  ansible.builtin.apt:
+    deb: "{{ cvmfs_release_deb }}"
+  when: ansible_os_family == "Debian"
+
+- name: Install the cernvm release package (RedHat)
+  become: true
+  ansible.builtin.dnf:
+    name: "{{ cvmfs_release_rpm }}"
+    disable_gpg_check: true
+    state: present
+  when: ansible_os_family == "RedHat"
+
+- name: Install the CVMFS client
+  become: true
+  ansible.builtin.package:
+    name:
+      - cvmfs
+      - cvmfs-config-none   # no default (CERN) repositories
+    state: present
+    update_cache: true
+
+- name: Write default.local
+  become: true
+  ansible.builtin.template:
+    src: default.local.j2
+    dest: /etc/cvmfs/default.local
+    mode: "0644"
+  notify: Reload cvmfs
+
+- name: Ship the repository public key
+  become: true
+  ansible.builtin.copy:
+    src: "{{ cvmfs_public_key_file }}"
+    dest: "/etc/cvmfs/keys/{{ cvmfs_repository }}.pub"
+    mode: "0644"
+  notify: Reload cvmfs
+
+- name: Write the repository config
+  become: true
+  ansible.builtin.template:
+    src: repository.conf.j2
+    dest: "/etc/cvmfs/config.d/{{ cvmfs_repository }}.conf"
+    mode: "0644"
+  notify: Reload cvmfs
+
+# No autofs: the union store needs the repository mounted BEFORE /nix/store
+# is assembled, so the mount is static and systemd-ordered (RequiresMountsFor).
+- name: Run cvmfs_config setup without autofs
+  become: true
+  ansible.builtin.command: cvmfs_config setup nouser noautofs
+  changed_when: false
+
+- name: Mount point
+  become: true
+  ansible.builtin.file:
+    path: "/cvmfs/{{ cvmfs_repository }}"
+    state: directory
+    mode: "0755"
+
+- name: Static fstab mount of the repository
+  become: true
+  ansible.posix.mount:
+    src: "{{ cvmfs_repository }}"
+    path: "/cvmfs/{{ cvmfs_repository }}"
+    fstype: cvmfs
+    opts: defaults,_netdev
+    state: mounted
+
+- name: Probe the repository
+  ansible.builtin.command: "cvmfs_config probe {{ cvmfs_repository }}"
+  changed_when: false

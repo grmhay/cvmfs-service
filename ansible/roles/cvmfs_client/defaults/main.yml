@@ -1,0 +1,21 @@
+---
+# cvmfs_client: install the CernVM-FS client and statically mount the Repository.
+cvmfs_repository: nix.hayweb.org
+
+# Clients read through the Cache (nginx reverse cache), never the bucket.
+# Several URLs = failover order. Cloud hosts use the same list over OpenVPN (Q5b).
+cvmfs_server_urls:
+  - "http://cache1.hayweb.org/cvmfs/@fqrn@"
+cvmfs_http_proxy: DIRECT
+
+# LRU cache quota in MB (Q17). Override per NetBox group:
+#   Pis 10000, VMs 20000, cloud 20000, builders/publisher 50000.
+cvmfs_quota_limit_mb: 20000
+cvmfs_cache_base: /var/lib/cvmfs
+
+# Public key committed at files/nix.hayweb.org.pub (not a secret).
+cvmfs_public_key_file: nix.hayweb.org.pub
+
+# Release packages (spike S1 confirms URLs; override if cernvm moves them).
+cvmfs_release_deb: https://ecsft.cern.ch/dist/cvmfs/cvmfs-release/cvmfs-release-latest_all.deb
+cvmfs_release_rpm: https://ecsft.cern.ch/dist/cvmfs/cvmfs-release/cvmfs-release-latest.noarch.rpm

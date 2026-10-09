@@ -1,0 +1,25 @@
+---
+# cvmfs_publisher: the Stratum 0 (Debian 13 x86_64 VM). Owns the Repository,
+# builds Profiles (aarch64 on pi5/pi6), publishes to the Origin on a timer.
+cvmfs_repository: nix.hayweb.org
+publisher_user: publisher
+publisher_home: /home/publisher
+publisher_repo_url: git@github.com:grmhay/cvmfs-service.git
+publisher_repo_dir: "{{ publisher_home }}/cvmfs-service"
+publisher_state_dir: "{{ publisher_home }}/.local/state/cvmfs-publish"
+publisher_interval: 5min
+publisher_timer_enabled: false    # enable after the first manual publish succeeds
+publisher_secrets_file: "{{ playbook_dir }}/../../secrets/publisher.enc.yaml"
+
+# Clients' URL, recorded in the repository at mkfs time (-w).
+cvmfs_stratum0_url: "http://cache1.hayweb.org/cvmfs/{{ cvmfs_repository }}"
+cvmfs_s3_host: "minio.hayweb.org:9000"   # S3 API port — confirm in RUNBOOK §1.4
+cvmfs_s3_bucket: cvmfs
+cvmfs_repository_ttl: 240                # seconds; default (Q16)
+
+nix_remote_builders:
+  - { host: pi5, system: aarch64-linux, max_jobs: 4, speed: 1 }
+  - { host: pi6, system: aarch64-linux, max_jobs: 4, speed: 1 }
+nix_builder_user: nixbuild
+
+cvmfs_release_deb: https://ecsft.cern.ch/dist/cvmfs/cvmfs-release/cvmfs-release-latest_all.deb

@@ -1,0 +1,8 @@
+---
+# Every fleet host. nix_group / nix_channel / cvmfs_nix_mode / cvmfs_quota_limit_mb
+# come from NetBox custom fields through the dynamic inventory (Q25).
+- name: Fleet clients
+  hosts: all:!nix_publisher:!nix_cache
+  roles:
+    - cvmfs_client
+    - nix_union_store

@@ -1,0 +1,5 @@
+---
+- name: CVMFS nginx cache
+  hosts: nix_cache
+  roles:
+    - cvmfs_nginx_cache

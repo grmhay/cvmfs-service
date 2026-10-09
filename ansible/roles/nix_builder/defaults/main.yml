@@ -1,0 +1,6 @@
+---
+# nix_builder: pi5 / pi6 accept remote builds from the Publisher.
+nix_builder_user: nixbuild
+# Public half of secrets/publisher.enc.yaml:nixbuild_private_key.
+nix_builder_authorized_key: ""
+nix_builder_max_jobs: 4

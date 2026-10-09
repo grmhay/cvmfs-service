@@ -1,0 +1,24 @@
+---
+# Thin mode: no daemon. /nix/store is a read-only bind of the Lower Store;
+# binaries run straight from it. For hosts that cannot run mergerfs.
+
+- name: Stop and mask the daemon
+  become: true
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    enabled: false
+    state: stopped
+    masked: true
+  loop:
+    - nix-daemon.socket
+    - nix-daemon.service
+  failed_when: false
+
+- name: Bind the Lower Store read-only onto /nix/store
+  become: true
+  ansible.posix.mount:
+    src: "/cvmfs/{{ cvmfs_repository }}/nix/store"
+    path: /nix/store
+    fstype: none
+    opts: bind,ro,_netdev,x-systemd.requires-mounts-for=/cvmfs/{{ cvmfs_repository }}
+    state: mounted

@@ -1,0 +1,18 @@
+---
+# NetBox dynamic inventory (decision Q25). Lives in ansible-lab-config; this is
+# the shape the roles expect. Groups:
+#   tag_nix_builder, tag_nix_canary  — from NetBox tags
+#   nix_publisher, nix_cache         — from device role
+# Host vars from custom fields: nix_group, nix_channel, cvmfs_nix_mode, cvmfs_quota_limit_mb.
+plugin: netbox.netbox.nb_inventory
+api_endpoint: https://netbox.hayweb.org
+validate_certs: true
+config_context: false
+group_by:
+  - tags
+  - device_roles
+compose:
+  nix_group: custom_fields.nix_group | default('base')
+  nix_channel: custom_fields.nix_channel | default('stable')
+  cvmfs_nix_mode: custom_fields.cvmfs_nix_mode | default('union')
+  cvmfs_quota_limit_mb: custom_fields.cvmfs_quota_limit_mb | default(20000)

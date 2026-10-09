@@ -1,0 +1,39 @@
+---
+# nix_union_store: Nix daemon on every host, with /nix/store assembled from a
+# local RW branch and the Repository's read-only Lower Store (ADR 0002).
+#
+#   union  — mergerfs(/nix/.rw-store/store=RW : /cvmfs/<repo>/nix/store=RO),
+#            Nix local-overlay-store over it. Zero-copy; publish is instantly visible.
+#   cache  — plain local /nix; Binary Cache in the Repository as a substituter;
+#            fleet-profile.timer copies the Group Profile in. The fallback.
+#   thin   — no daemon; /nix/store is a read-only bind of the Lower Store.
+cvmfs_nix_mode: union
+
+cvmfs_repository: nix.hayweb.org
+
+# From NetBox (custom fields nix_group / nix_channel) via the dynamic inventory.
+nix_group: base
+nix_channel: stable
+
+# Determinate installer, pinned (Q11). Bump here; Ansible upgrades the fleet.
+nix_installer_version: "3.8.0"
+nix_installer_url: "https://install.determinate.systems/nix/tag/v{{ nix_installer_version }}"
+
+nix_rw_root: /nix/.rw-store
+nix_gc_older_than: 30d
+nix_min_free: 2G
+nix_max_free: 10G
+
+# mergerfs option set — final values come out of spike S2.
+#   category.create=ff     writes go to the first (RW) branch
+#   inodecalc=path-hash    stable inodes regardless of CVMFS renumbering per revision
+#   cache.files=auto-full  page cache on: executables are mmapped
+#   cache.negative_entry=0 a path published after a failed lookup is found next time
+#   cache.entry=1          1 s dentry cache; a revision flip is visible within it
+#   branches-mount-timeout wait for /cvmfs to be there at boot
+mergerfs_options: "category.create=ff,inodecalc=path-hash,cache.files=auto-full,cache.negative_entry=0,cache.entry=1,cache.attr=1,allow_other,branches-mount-timeout=60,fsname=nixstore"
+
+# RHEL 10 has no distro package; upstream publishes RPMs per release (spike S1
+# confirms el10.aarch64). Debian 13 ships 2.40.2 natively.
+mergerfs_version: "2.40.2"
+mergerfs_rpm_url: "https://github.com/trapexit/mergerfs/releases/download/{{ mergerfs_version }}/mergerfs-{{ mergerfs_version }}-1.el10.{{ ansible_architecture }}.rpm"

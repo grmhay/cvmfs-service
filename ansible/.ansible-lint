@@ -1,0 +1,9 @@
+---
+# Roles in this repo deliberately share a small cross-role vocabulary
+# (cvmfs_repository, nix_group, nix_channel, cvmfs_nix_mode, …) because the
+# values come from NetBox custom fields and apply to several roles at once.
+skip_list:
+  - var-naming[no-role-prefix]
+  - yaml[line-length]
+exclude_paths:
+  - .github/

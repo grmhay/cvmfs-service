@@ -1,0 +1,12 @@
+---
+- name: Reload systemd
+  become: true
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Restart nix-daemon
+  become: true
+  ansible.builtin.systemd:
+    name: nix-daemon.service
+    state: restarted
+  when: cvmfs_nix_mode != "thin"

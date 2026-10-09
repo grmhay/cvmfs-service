@@ -1,0 +1,185 @@
+---
+# Order: packages -> publisher user + secrets -> Nix with remote builders ->
+# repository (mkfs once) -> dirtab/TTL -> resign timer -> publish reconciler.
+# nix_union_store runs first in the playbook so the Publisher is itself a
+# union-mode client of its own repository (verification, Phase 1).
+
+- name: Install the cernvm release package
+  become: true
+  ansible.builtin.apt:
+    deb: "{{ cvmfs_release_deb }}"
+
+- name: Install the server tools
+  become: true
+  ansible.builtin.apt:
+    name: [cvmfs, cvmfs-server, cvmfs-config-none, apache2, git]
+    state: present
+    update_cache: true
+
+- name: Decrypt publisher secrets (control node)
+  delegate_to: localhost
+  become: false
+  run_once: true
+  ansible.builtin.command: "sops --decrypt {{ publisher_secrets_file }}"
+  register: _secrets_raw
+  changed_when: false
+  no_log: true
+
+- name: Parse secrets
+  ansible.builtin.set_fact:
+    publisher_secrets: "{{ _secrets_raw.stdout | from_yaml }}"
+  no_log: true
+
+- name: Publisher user
+  become: true
+  ansible.builtin.user:
+    name: "{{ publisher_user }}"
+    home: "{{ publisher_home }}"
+    shell: /bin/bash
+    create_home: true
+
+- name: Ssh directory
+  become: true
+  ansible.builtin.file:
+    path: "{{ publisher_home }}/.ssh"
+    state: directory
+    owner: "{{ publisher_user }}"
+    mode: "0700"
+
+- name: Builder key and deploy key
+  become: true
+  ansible.builtin.copy:
+    content: "{{ item.content }}"
+    dest: "{{ publisher_home }}/.ssh/{{ item.name }}"
+    owner: "{{ publisher_user }}"
+    mode: "0600"
+  loop:
+    - { name: id_nixbuild, content: "{{ publisher_secrets.nixbuild_private_key }}" }
+    - { name: id_deploy, content: "{{ publisher_secrets.deploy_key_private }}" }
+  loop_control: { label: "{{ item.name }}" }
+  no_log: true
+
+- name: Ssh config for builders and GitHub
+  become: true
+  ansible.builtin.template:
+    src: ssh_config.j2
+    dest: "{{ publisher_home }}/.ssh/config"
+    owner: "{{ publisher_user }}"
+    mode: "0600"
+
+# Remote builders are a daemon (root) setting: the root user needs the same key.
+- name: Root ssh key for remote builds
+  become: true
+  ansible.builtin.copy:
+    content: "{{ publisher_secrets.nixbuild_private_key }}"
+    dest: /root/.ssh/id_nixbuild
+    mode: "0600"
+  no_log: true
+
+- name: Root ssh config
+  become: true
+  ansible.builtin.template:
+    src: ssh_config.j2
+    dest: /root/.ssh/config
+    mode: "0600"
+
+- name: Remote builders in nix.conf
+  become: true
+  ansible.builtin.blockinfile:
+    path: /etc/nix/nix.conf
+    marker: "# {mark} cvmfs_publisher"
+    block: |
+      {% set specs = [] -%}
+      {% for b in nix_remote_builders -%}
+      {% set _ = specs.append("ssh://" ~ nix_builder_user ~ "@" ~ b.host ~ " " ~ b.system ~ " /root/.ssh/id_nixbuild " ~ b.max_jobs ~ " " ~ b.speed) -%}
+      {% endfor -%}
+      builders = {{ specs | join(' ; ') }}
+      builders-use-substitutes = true
+      trusted-users = root @wheel {{ publisher_user }}
+  notify: Restart nix-daemon
+
+- name: S3 backend config
+  become: true
+  ansible.builtin.template:
+    src: s3.conf.j2
+    dest: /etc/cvmfs/s3.conf
+    mode: "0600"
+  no_log: true
+
+- name: Create the repository (once; never re-run against a populated bucket)
+  become: true
+  ansible.builtin.command: >
+    cvmfs_server mkfs -s /etc/cvmfs/s3.conf -w {{ cvmfs_stratum0_url }}
+    -o {{ publisher_user }} {{ cvmfs_repository }}
+  args:
+    creates: "/etc/cvmfs/repositories.d/{{ cvmfs_repository }}"
+
+- name: Repository TTL
+  become: true
+  ansible.builtin.lineinfile:
+    path: "/etc/cvmfs/repositories.d/{{ cvmfs_repository }}/server.conf"
+    regexp: "^CVMFS_REPOSITORY_TTL="
+    line: "CVMFS_REPOSITORY_TTL={{ cvmfs_repository_ttl }}"
+
+- name: Explicit nested catalogs only
+  become: true
+  ansible.builtin.lineinfile:
+    path: "/etc/cvmfs/repositories.d/{{ cvmfs_repository }}/server.conf"
+    regexp: "^CVMFS_AUTOCATALOGS="
+    line: "CVMFS_AUTOCATALOGS=false"
+
+- name: Fetch the public key back to the control node for the client role
+  become: true
+  ansible.builtin.fetch:
+    src: "/etc/cvmfs/keys/{{ cvmfs_repository }}.pub"
+    dest: "{{ playbook_dir }}/../roles/cvmfs_client/files/{{ cvmfs_repository }}.pub"
+    flat: true
+
+- name: Clone this repo for the publish reconciler
+  become: true
+  become_user: "{{ publisher_user }}"
+  ansible.builtin.git:
+    repo: "{{ publisher_repo_url }}"
+    dest: "{{ publisher_repo_dir }}"
+    version: master
+    accept_hostkey: true
+    key_file: "{{ publisher_home }}/.ssh/id_deploy"
+
+- name: State dir
+  become: true
+  ansible.builtin.file:
+    path: "{{ publisher_state_dir }}"
+    state: directory
+    owner: "{{ publisher_user }}"
+    mode: "0755"
+
+- name: Resign and publish units
+  become: true
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    mode: "0644"
+  loop:
+    - cvmfs-publish.service
+    - cvmfs-publish.timer
+    - cvmfs-resign.service
+    - cvmfs-resign.timer
+  notify: Reload systemd
+
+- name: Flush handlers
+  ansible.builtin.meta: flush_handlers
+
+- name: Resign timer on
+  become: true
+  ansible.builtin.systemd:
+    name: cvmfs-resign.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Publish timer state (disabled until the first manual publish succeeds)
+  become: true
+  ansible.builtin.systemd:
+    name: cvmfs-publish.timer
+    enabled: "{{ publisher_timer_enabled }}"
+    state: "{{ 'started' if publisher_timer_enabled else 'stopped' }}"

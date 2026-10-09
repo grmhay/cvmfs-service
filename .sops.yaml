@@ -1,0 +1,7 @@
+# Same age recipient as homelab-opscontrolplane (decision Q12): one key to protect.
+# Encrypt:  sops --encrypt --in-place secrets/<name>.enc.yaml
+# Decrypt:  sops --decrypt secrets/<name>.enc.yaml
+creation_rules:
+  - path_regex: \.enc\.yaml$
+    age: >-
+      age1ne8tnzv3tv3cg07mt3swsltgjnha6e60ar6ypm7fg3zallvxee3qkpg6cf

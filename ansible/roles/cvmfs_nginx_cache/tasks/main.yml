@@ -1,0 +1,54 @@
+---
+- name: Install nginx
+  become: true
+  ansible.builtin.package:
+    name: nginx
+    state: present
+
+- name: Cache directory
+  become: true
+  ansible.builtin.file:
+    path: "{{ cache_path }}"
+    state: directory
+    owner: "{{ 'www-data' if ansible_os_family == 'Debian' else 'nginx' }}"
+    mode: "0750"
+
+- name: Shared upstream settings
+  become: true
+  ansible.builtin.template:
+    src: cvmfs-upstream.inc.j2
+    dest: /etc/nginx/cvmfs-upstream.inc
+    mode: "0644"
+  notify: Reload nginx
+
+- name: Site config
+  become: true
+  ansible.builtin.template:
+    src: cvmfs-cache.conf.j2
+    dest: "{{ '/etc/nginx/sites-available/cvmfs-cache.conf' if ansible_os_family == 'Debian' else '/etc/nginx/conf.d/cvmfs-cache.conf' }}"
+    mode: "0644"
+  notify: Reload nginx
+
+- name: Enable the site (Debian)
+  become: true
+  ansible.builtin.file:
+    src: /etc/nginx/sites-available/cvmfs-cache.conf
+    dest: /etc/nginx/sites-enabled/cvmfs-cache.conf
+    state: link
+  when: ansible_os_family == "Debian"
+  notify: Reload nginx
+
+- name: Drop the default site (Debian)
+  become: true
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  when: ansible_os_family == "Debian"
+  notify: Reload nginx
+
+- name: Start nginx
+  become: true
+  ansible.builtin.systemd:
+    name: nginx
+    enabled: true
+    state: started

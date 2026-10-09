@@ -1,0 +1,10 @@
+---
+# Collections the roles use. ansible-lab-config consumes the roles themselves via:
+#   roles:
+#     - src: https://github.com/grmhay/cvmfs-service.git
+#       scm: git
+#       version: v0.1.0      # tag; bump to roll the fleet (Q23)
+collections:
+  - name: ansible.posix
+    version: ">=1.5.0"
+  - name: netbox.netbox
