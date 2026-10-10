@@ -1,0 +1,10 @@
+---
+# nix_union_store in union Mode against a stand-in Lower Store, on a throwaway
+# host with no Repository. Build the stand-in first: see spikes/union-standin.sh.
+- name: Union Store over a stand-in Lower Store
+  hosts: all
+  vars:
+    cvmfs_nix_mode: union
+    nix_lower_store: /srv/lower/nix
+  roles:
+    - nix_union_store
