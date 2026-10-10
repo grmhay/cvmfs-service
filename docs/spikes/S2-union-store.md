@@ -78,8 +78,11 @@ failed.
   mergerfs resolves paths as root) sandboxed builds succeed, including `nixpkgs#lolcat`.
 
 **Fixes.**
-1. Upstream Nix: make the chroot parent traversable by the build group, e.g. `0710` owned
-   `root:<build gid>` (or `0711`). `root/` already denies other users. One-line change; the right fix.
+1. Upstream Nix: make the chroot parent traversable by the build user only: `0100 <build uid>:<build
+   gid>`. Not by the build group (`0710`/`0711` would let other `nixbld` users into this build's
+   group-writable `root/nix/store`). Implemented and proven on Debian 13 and RHEL 10 in the fork
+   branch `grmhay/nix:chroot-parent-fuse-traverse`; results and the draft issue/PR are in
+   [S2-upstream-nix-issue.md](S2-upstream-nix-issue.md). Not submitted yet.
 2. Interim on union-mode hosts, pick one in the role (`nix_union_sandbox`):
    - `sandbox = false` (keeps build users; loses namespace isolation) — the role default.
    - `build-users-group =` (keeps the sandbox; builds run as root inside it, which the Nix manual
