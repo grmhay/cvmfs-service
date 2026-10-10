@@ -21,6 +21,16 @@ nix_installer_url: "https://install.determinate.systems/nix/tag/v{{ nix_installe
 
 nix_rw_root: /nix/.rw-store
 
+# The Lower Store: a Nix store's /nix directory (store/ + var/nix/db), the RO
+# branch of the Union Store. Production is always the Repository's; a stand-in
+# directory lets the role run on a host with no Repository (spikes/union-standin.sh).
+nix_lower_store: "/cvmfs/{{ cvmfs_repository }}/nix"
+
+# A store path the daemon must report valid at the end of a union run. Only the
+# Lower Store has it, so it is valid only through the overlay. Defaults to the
+# host's published Group Profile; empty skips the check (no Repository in use).
+nix_union_check_path: "/cvmfs/{{ cvmfs_repository }}/profiles/{{ nix_channel }}/{{ nix_group }}/{{ nix_system }}"
+
 # The store nix-daemon serves in union mode (clients use store = daemon).
 # Lower Store: the Repository's /nix (store + db.sqlite), read-only — the
 # Publisher leaves db.sqlite checkpointed, out of WAL mode, because a read-only
@@ -29,7 +39,7 @@ nix_rw_root: /nix/.rw-store
 # not overlayfs (ADR 0002). No root=/: it makes the real store dir "//nix/store",
 # which Nix takes for a chroot store and redirects every build output (spike S2). Verify the URL grammar against `nix help-stores`
 # whenever nix_installer_version is bumped.
-nix_overlay_store_url: "local-overlay://?lower-store=local%3Froot%3D%2Fcvmfs%2F{{ cvmfs_repository }}%26read-only%3Dtrue&upper-layer={{ nix_rw_root }}/store&check-mount=false"
+nix_overlay_store_url: "local-overlay://?lower-store=local%3Froot%3D{{ nix_lower_store | dirname | urlencode | replace('/', '%2F') }}%26read-only%3Dtrue&upper-layer={{ nix_rw_root }}/store&check-mount=false"
 
 # Nix's build sandbox cannot work on the union: the chroot is created under the
 # store as <drv>.chroot (0700) and mergerfs resolves paths as the build user

@@ -56,9 +56,6 @@
     - Reload systemd
     - Restart nix-daemon
 
-- name: Flush handlers so the units are loaded
-  ansible.builtin.meta: flush_handlers
-
 - name: Mount the union store
   become: true
   ansible.builtin.systemd:
@@ -67,16 +64,23 @@
     state: started
     daemon_reload: true
 
-- name: Start the daemon on top of it
+# The installer's nix-daemon units are symlinks into /nix/store, which is empty
+# between the first-run migration and the mount: systemd can only load them
+# from here on, hence daemon_reload. The socket comes up before the handlers
+# restart the service; a service started first makes the socket refuse to listen.
+- name: Start the daemon's socket on top of it
   become: true
   ansible.builtin.systemd:
     name: nix-daemon.socket
     enabled: true
     state: started
+    daemon_reload: true
+
+- name: Flush handlers so the daemon restarts on the union
+  ansible.builtin.meta: flush_handlers
 
 # A path that exists only in the Lower Store is valid only through the overlay.
 - name: The daemon serves the Lower Store through the overlay
-  ansible.builtin.command: >-
-    nix path-info --store daemon
-    /cvmfs/{{ cvmfs_repository }}/profiles/{{ nix_channel }}/{{ nix_group }}/{{ nix_system }}
+  ansible.builtin.command: nix path-info --store daemon {{ nix_union_check_path }}
   changed_when: false
+  when: nix_union_check_path | length > 0
