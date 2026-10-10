@@ -21,6 +21,10 @@
     executable: /bin/bash
   when: cvmfs_nix_mode != "thin"
 
+- name: Sandbox version gate
+  ansible.builtin.include_tasks: sandbox_gate.yml
+  when: cvmfs_nix_mode == "union" and (nix_union_sandbox | string | lower) == "true"
+
 # -- thin and cache modes need no mergerfs; union does.
 - name: Install mergerfs (Debian)
   become: true
