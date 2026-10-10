@@ -34,8 +34,9 @@ installer_version="${NIX_INSTALLER_VERSION:-3.8.0}"
 
 if [ ! -e /nix/receipt.json ]; then
   command -v curl >/dev/null || { apt-get update -q && apt-get install -y -q curl; }
+  # From v3.13.0 the installer defaults to Determinate Nix; the fleet runs upstream.
   curl -fsSL "https://install.determinate.systems/nix/tag/v$installer_version" |
-    sh -s -- install linux --no-confirm --init systemd
+    NIX_INSTALLER_PREFER_UPSTREAM_NIX=true sh -s -- install linux --no-confirm --init systemd
 fi
 export PATH="/nix/var/nix/profiles/default/bin:$PATH"
 

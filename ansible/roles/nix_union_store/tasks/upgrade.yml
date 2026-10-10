@@ -1,0 +1,72 @@
+---
+# Move an existing install to the upstream Nix the pinned installer installs,
+# in place, with `nix upgrade-nix` (see nix_installer_version in defaults for
+# why). The new Nix is fetched through the daemon, so on a Union Store host it
+# lands in the RW Branch; the mount, the RW Branch, the daemon's drop-in and
+# nix.conf are not touched. A host already on that Nix is left alone.
+
+# The installer binary embeds the URL of the Nix tarball it installs; the
+# release is the same for every system, so the x86_64 binary answers for all.
+- name: Find the Nix release the pinned installer installs
+  delegate_to: localhost
+  run_once: true
+  become: false
+  ansible.builtin.shell: |
+    set -euo pipefail
+    bin="$(mktemp)"
+    trap 'rm -f "$bin"' EXIT
+    curl -fsSL -o "$bin" "{{ nix_installer_url }}/nix-installer-x86_64-linux"
+    grep -a -o -m1 -E 'https://releases\.nixos\.org/nix/nix-[0-9]+\.[0-9]+\.[0-9]+/' "$bin" | head -n1
+  args:
+    executable: /bin/bash
+  register: _nix_release
+  changed_when: false
+  failed_when: _nix_release.rc != 0 or _nix_release.stdout | length == 0
+
+- name: Read the installed Nix version
+  ansible.builtin.command: /nix/var/nix/profiles/default/bin/nix --version
+  register: _nix_installed
+  changed_when: false
+
+- name: Compare it with the pinned release
+  ansible.builtin.set_fact:
+    nix_pinned_version: "{{ _nix_release.stdout | regex_search('nix-([0-9.]+)/$', '\\1') | first }}"
+    _nix_installed_version: "{{ _nix_installed.stdout.split() | last }}"
+
+# Fetches the release's store path for this system from its fallback-paths.nix
+# (cache.nixos.org substitutes it) and points the default profile at it.
+- name: Upgrade Nix in place to the pinned release
+  become: true
+  ansible.builtin.command: >-
+    nix upgrade-nix --nix-store-paths-url {{ _nix_release.stdout }}fallback-paths.nix
+  environment:
+    PATH: /nix/var/nix/profiles/default/bin:/usr/sbin:/usr/bin:/sbin:/bin
+  changed_when: true
+  when: _nix_installed_version != nix_pinned_version
+
+# The daemon's units are symlinks through the default profile, so they now
+# come from the new Nix too: reload, then restart onto it.
+- name: Restart nix-daemon on the upgraded Nix
+  become: true
+  ansible.builtin.systemd:
+    name: nix-daemon.service
+    state: restarted
+    daemon_reload: true
+  when: _nix_installed_version != nix_pinned_version
+
+- name: The client and the daemon run the pinned Nix
+  ansible.builtin.shell: |
+    set -euo pipefail
+    nix --version
+    nix store info --store daemon 2>&1
+  args:
+    executable: /bin/bash
+  environment:
+    PATH: /nix/var/nix/profiles/default/bin:/usr/sbin:/usr/bin:/sbin:/bin
+  register: _nix_after
+  changed_when: false
+  failed_when: >-
+    _nix_after.rc != 0
+    or _nix_after.stdout_lines[0].split() | last != nix_pinned_version
+    or ('Version: ' ~ nix_pinned_version) not in _nix_after.stdout
+  when: _nix_installed_version != nix_pinned_version
