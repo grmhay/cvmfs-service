@@ -1,5 +1,5 @@
 # Managed by cvmfs-service (role nix_union_store, mode {{ cvmfs_nix_mode }}).
-{% if cvmfs_nix_mode == "union" and nix_union_sandbox == "root" %}
+{% if cvmfs_nix_mode == "union" and _nix_union_sandbox == "root" %}
 build-users-group =
 {% else %}
 build-users-group = nixbld
@@ -14,7 +14,7 @@ experimental-features = nix-command flakes local-overlay-store read-only-local-s
 # the overlay store (nix_overlay_store_url, set in its drop-in): a client that
 # opened it directly would need write access to /nix/var/nix/db (spike S2).
 store = daemon
-{% if nix_union_sandbox == "false" %}
+{% if _nix_union_sandbox == "false" %}
 # The sandbox chroot lives under the store (0700) and mergerfs resolves paths as
 # the build user, so sandboxed builds fail here (spike S2, ADR 0002).
 sandbox = false

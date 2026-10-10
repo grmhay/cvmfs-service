@@ -1,0 +1,21 @@
+---
+# Version gate (#11, spec #6): refuse nix_union_sandbox "true" in union Mode
+# unless the installed Nix carries the chroot fix (nix_sandbox_fix_version).
+# Runs before nix.conf, the mount or the daemon drop-in are touched, so a
+# refused run leaves the host as it was. Reads _nix_installed_version
+# (nix_version.yml), which is re-read after an upgrade.
+
+- name: Refuse the sandbox on a Nix without the chroot fix
+  vars:
+    _nix_required: "{{ nix_sandbox_fix_version | default('', true) | string }}"
+  ansible.builtin.assert:
+    that:
+      - _nix_required | length > 0
+      - _nix_installed_version is version(_nix_required, '>=')
+    fail_msg: >-
+      nix_union_sandbox "true" refused: installed Nix {{ _nix_installed_version }},
+      required Nix {{ _nix_required if _nix_required | length > 0 else
+      'unknown (nix_sandbox_fix_version is unset: no Nix release carries the chroot fix yet)' }}.
+      Sandboxed builds on the Union Store fail without that fix (spike S2, ADR 0002, #6).
+      Set nix_union_sandbox to "false" (no sandbox) or "root" (sandbox, builds run as root) for this host.
+    success_msg: "Installed Nix {{ _nix_installed_version }} carries the chroot fix (>= {{ _nix_required }})"

@@ -15,11 +15,45 @@ cvmfs_repository: nix.hayweb.org
 nix_group: base
 nix_channel: stable
 
-# Determinate installer, pinned (Q11). Bump here; Ansible upgrades the fleet.
+# Determinate installer, pinned (Q11). Bumping the pin upgrades the fleet: a
+# host whose Nix is older than the one the pinned installer installs is moved
+# to it in place on the next run (tasks/upgrade.yml), then its daemon restarts;
+# a host already on it is not touched. Lowering the pin never downgrades: hosts
+# above it keep their Nix (only fresh installs get the lower one). Every run
+# also restarts a daemon still on an older Nix than the installed one, e.g.
+# after a restart failed mid-upgrade. After a bump, recheck
+# nix_overlay_store_url against `nix help-stores` for the new Nix.
+#
+# Each installer release installs one upstream Nix, fixed in its flake.nix and
+# embedded in the binary (the role reads it from there): v3.8.0 -> 2.30.0,
+# v3.11.3 -> 2.32.0, v3.17.0 -> 2.34.0, v3.23.1 -> 2.35.2. From v3.13.0 the
+# installer defaults to Determinate Nix, so the role asks for upstream Nix with
+# NIX_INSTALLER_PREFER_UPSTREAM_NIX (older releases ignore it).
+#
+# Upgrade method: `nix upgrade-nix`, pinned to the release's fallback-paths.nix
+# on releases.nixos.org. The installer has no upgrade command for upstream Nix:
+# v3.8.0's README documents `sudo -i nix upgrade-nix` for upstream installs and
+# `determinate-nixd upgrade` for Determinate Nix; later READMEs keep only the
+# latter. Their other route, uninstall and reinstall with another installer,
+# deletes /nix, RW Branch included, and a re-run of `install` on an installed
+# host refuses. upgrade-nix fetches through the daemon and only switches the
+# default profile, so the Union Store is left as it is. Without the explicit
+# URL it would follow the installer's upgrade-nix-store-path-url (Determinate's
+# moving "stable"), not the pin.
 nix_installer_version: "3.8.0"
 nix_installer_url: "https://install.determinate.systems/nix/tag/v{{ nix_installer_version }}"
 
 nix_rw_root: /nix/.rw-store
+
+# The Lower Store: a Nix store's /nix directory (store/ + var/nix/db), the RO
+# branch of the Union Store. Production is always the Repository's; a stand-in
+# directory lets the role run on a host with no Repository (spikes/union-standin.sh).
+nix_lower_store: "/cvmfs/{{ cvmfs_repository }}/nix"
+
+# A store path the daemon must report valid at the end of a union run. Only the
+# Lower Store has it, so it is valid only through the overlay. Defaults to the
+# host's published Group Profile; empty skips the check (no Repository in use).
+nix_union_check_path: "/cvmfs/{{ cvmfs_repository }}/profiles/{{ nix_channel }}/{{ nix_group }}/{{ nix_system }}"
 
 # The store nix-daemon serves in union mode (clients use store = daemon).
 # Lower Store: the Repository's /nix (store + db.sqlite), read-only — the
@@ -29,7 +63,7 @@ nix_rw_root: /nix/.rw-store
 # not overlayfs (ADR 0002). No root=/: it makes the real store dir "//nix/store",
 # which Nix takes for a chroot store and redirects every build output (spike S2). Verify the URL grammar against `nix help-stores`
 # whenever nix_installer_version is bumped.
-nix_overlay_store_url: "local-overlay://?lower-store=local%3Froot%3D%2Fcvmfs%2F{{ cvmfs_repository }}%26read-only%3Dtrue&upper-layer={{ nix_rw_root }}/store&check-mount=false"
+nix_overlay_store_url: "local-overlay://?lower-store=local%3Froot%3D{{ nix_lower_store | dirname | urlencode | replace('/', '%2F') }}%26read-only%3Dtrue&upper-layer={{ nix_rw_root }}/store&check-mount=false"
 
 # Nix's build sandbox cannot work on the union: the chroot is created under the
 # store as <drv>.chroot (0700) and mergerfs resolves paths as the build user
@@ -37,7 +71,20 @@ nix_overlay_store_url: "local-overlay://?lower-store=local%3Froot%3D%2Fcvmfs%2F{
 #   "false"  — no sandbox, build users kept (default)
 #   "root"   — sandbox kept, no build users: builds run as root inside it
 #   "true"   — sandbox on; local builds on union hosts fail until the upstream fix
+# A YAML boolean from inventory (unquoted false/true) counts as "false"/"true";
+# any other value fails the play. In union Mode, "true" and "root" end the run
+# with a sandboxed smoke build (tasks/smoke.yml). With "true" the version gate
+# (nix_sandbox_fix_version, below) runs first, so the smoke build can only fail
+# for "true" once nix_sandbox_fix_version is set at or below the installed Nix.
 nix_union_sandbox: "false"
+
+# First Nix release carrying the chroot fix (chroot parent 0100, owned by the
+# build user; spec #6, https://github.com/grmhay/cvmfs-service/issues/6).
+# With nix_union_sandbox "true" in union Mode the play fails early, before the
+# daemon is reconfigured, if the installed Nix is older. Unset ("") until such a
+# release exists, so "true" is refused on every version. "false", "root" and
+# the cache/thin Modes are never gated.
+nix_sandbox_fix_version: ""
 
 nix_gc_older_than: 30d
 nix_min_free: 2G
