@@ -70,6 +70,14 @@ nix_overlay_store_url: "local-overlay://?lower-store=local%3Froot%3D{{ nix_lower
 #   "true"   — sandbox on; local builds on union hosts fail until the upstream fix
 nix_union_sandbox: "false"
 
+# First Nix release carrying the chroot fix (chroot parent 0100, owned by the
+# build user; spec #6, https://github.com/grmhay/cvmfs-service/issues/6).
+# With nix_union_sandbox "true" in union Mode the play fails early, before the
+# daemon is reconfigured, if the installed Nix is older. Unset ("") until such a
+# release exists, so "true" is refused on every version. "false", "root" and
+# the cache/thin Modes are never gated.
+nix_sandbox_fix_version: ""
+
 nix_gc_older_than: 30d
 nix_min_free: 2G
 nix_max_free: 10G

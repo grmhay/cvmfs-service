@@ -28,6 +28,10 @@
   ansible.builtin.include_tasks: upgrade.yml
   when: cvmfs_nix_mode != "thin"
 
+- name: Sandbox version gate
+  ansible.builtin.include_tasks: sandbox_gate.yml
+  when: cvmfs_nix_mode == "union" and (nix_union_sandbox | string | lower) == "true"
+
 # -- thin and cache modes need no mergerfs; union does.
 - name: Install mergerfs (Debian)
   become: true
@@ -91,3 +95,8 @@
     state: started
     daemon_reload: true
   when: cvmfs_nix_mode != "thin"
+
+# Last step: a broken sandbox fails the play, not someone's build later (#6).
+- name: Sandboxed smoke build
+  ansible.builtin.include_tasks: smoke.yml
+  when: cvmfs_nix_mode == "union" and nix_union_sandbox in ["true", "root"]
