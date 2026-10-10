@@ -19,7 +19,7 @@ case ${1:?usage: s2-nix-chroot-fix.sh <nix-cli out path> | --installed} in
     installed='' nixpkg=$1
     url='local-overlay://?lower-store=local%3Froot%3D%2Fsrv%2Flower%26read-only%3Dtrue&upper-layer=/nix/.rw-store/store&check-mount=false' ;;
 esac
-upper=${url#*upper-layer=}; upper=${upper%%&*}
+rw_branch=${url#*upper-layer=}; rw_branch=${rw_branch%%&*}
 pass=0 fail=0
 ok()  { echo "ok    $*"; pass=$((pass+1)); }
 bad() { echo "FAIL  $*"; fail=$((fail+1)); }
@@ -62,7 +62,7 @@ if nb --expr "$(expr_of t1 'echo hi > \$out')"; then ok "minimal sandboxed build
 # 2. chroot parent mode/owner, and another build user cannot traverse it
 # (the sandbox's busybox has no sleep applet, so the builder spins instead)
 nb --expr "$(expr_of t2 'i=0; while [ \$i -lt 4000000 ]; do i=\$((i+1)); done; echo hi > \$out')" >/tmp/t2.log 2>&1 & bpid=$!
-for _ in $(seq 600); do c=$(ls -d "$upper"/*-t2-*.chroot 2>/dev/null | head -1); [ -n "$c" ] && break; sleep 0.05; done
+for _ in $(seq 600); do c=$(ls -d "$rw_branch"/*-t2-*.chroot 2>/dev/null | head -1); [ -n "$c" ] && break; sleep 0.05; done
 if [ -n "$c" ]; then
   st=$(stat -c '%a %U:%G' "$c"); owner=${st#* }; owner=${owner%%:*}
   echo "      chroot parent: $st"

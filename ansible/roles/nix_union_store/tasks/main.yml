@@ -3,6 +3,19 @@
   ansible.builtin.set_fact:
     nix_system: "{{ {'x86_64': 'x86_64-linux', 'aarch64': 'aarch64-linux'}[ansible_architecture] }}"
 
+# Inventory may give a YAML boolean (unquoted false/true/no/yes) or any case.
+# Every later decision (the gate, nix.conf, the smoke build) reads this one.
+- name: Normalise nix_union_sandbox
+  ansible.builtin.set_fact:
+    _nix_union_sandbox: "{{ nix_union_sandbox | string | lower }}"
+
+- name: Check nix_union_sandbox is "false", "root" or "true"
+  ansible.builtin.assert:
+    that: _nix_union_sandbox in ["false", "root", "true"]
+    fail_msg: >-
+      nix_union_sandbox is {{ nix_union_sandbox | to_json }}; it must be "false", "root" or "true".
+    quiet: true
+
 # The Debian 13 template ships without curl (spike S1).
 - name: Install curl for the Nix installer
   become: true
@@ -24,13 +37,17 @@
     NIX_INSTALLER_PREFER_UPSTREAM_NIX: "true"
   when: cvmfs_nix_mode != "thin"
 
+- name: Read the installed Nix version
+  ansible.builtin.include_tasks: nix_version.yml
+  when: cvmfs_nix_mode != "thin"
+
 - name: Upgrade Nix when the installer pin moves
   ansible.builtin.include_tasks: upgrade.yml
   when: cvmfs_nix_mode != "thin"
 
 - name: Sandbox version gate
   ansible.builtin.include_tasks: sandbox_gate.yml
-  when: cvmfs_nix_mode == "union" and (nix_union_sandbox | string | lower) == "true"
+  when: cvmfs_nix_mode == "union" and _nix_union_sandbox == "true"
 
 # -- thin and cache modes need no mergerfs; union does.
 - name: Install mergerfs (Debian)
@@ -99,4 +116,4 @@
 # Last step: a broken sandbox fails the play, not someone's build later (#6).
 - name: Sandboxed smoke build
   ansible.builtin.include_tasks: smoke.yml
-  when: cvmfs_nix_mode == "union" and nix_union_sandbox in ["true", "root"]
+  when: cvmfs_nix_mode == "union" and _nix_union_sandbox in ["true", "root"]

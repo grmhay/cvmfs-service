@@ -16,10 +16,13 @@ nix_group: base
 nix_channel: stable
 
 # Determinate installer, pinned (Q11). Bumping the pin upgrades the fleet: a
-# host whose Nix differs from the one the pinned installer installs is moved to
-# it in place on the next run (tasks/upgrade.yml), then its daemon restarts; a
-# host already on it is not touched. After a bump, recheck nix_overlay_store_url
-# against `nix help-stores` for the new Nix.
+# host whose Nix is older than the one the pinned installer installs is moved
+# to it in place on the next run (tasks/upgrade.yml), then its daemon restarts;
+# a host already on it is not touched. Lowering the pin never downgrades: hosts
+# above it keep their Nix (only fresh installs get the lower one). Every run
+# also restarts a daemon still on an older Nix than the installed one, e.g.
+# after a restart failed mid-upgrade. After a bump, recheck
+# nix_overlay_store_url against `nix help-stores` for the new Nix.
 #
 # Each installer release installs one upstream Nix, fixed in its flake.nix and
 # embedded in the binary (the role reads it from there): v3.8.0 -> 2.30.0,
@@ -68,6 +71,11 @@ nix_overlay_store_url: "local-overlay://?lower-store=local%3Froot%3D{{ nix_lower
 #   "false"  — no sandbox, build users kept (default)
 #   "root"   — sandbox kept, no build users: builds run as root inside it
 #   "true"   — sandbox on; local builds on union hosts fail until the upstream fix
+# A YAML boolean from inventory (unquoted false/true) counts as "false"/"true";
+# any other value fails the play. In union Mode, "true" and "root" end the run
+# with a sandboxed smoke build (tasks/smoke.yml). With "true" the version gate
+# (nix_sandbox_fix_version, below) runs first, so the smoke build can only fail
+# for "true" once nix_sandbox_fix_version is set at or below the installed Nix.
 nix_union_sandbox: "false"
 
 # First Nix release carrying the chroot fix (chroot parent 0100, owned by the

@@ -1,72 +1,102 @@
 ---
-# Move an existing install to the upstream Nix the pinned installer installs,
-# in place, with `nix upgrade-nix` (see nix_installer_version in defaults for
-# why). The new Nix is fetched through the daemon, so on a Union Store host it
-# lands in the RW Branch; the mount, the RW Branch, the daemon's drop-in and
-# nix.conf are not touched. A host already on that Nix is left alone.
+# Move an existing install up to the upstream Nix the pinned installer
+# installs, in place, with `nix upgrade-nix` (see nix_installer_version in
+# defaults for why). The new Nix is fetched through the daemon, so on a Union
+# Store host it lands in the RW Branch; the mount, the RW Branch, the daemon's
+# drop-in and nix.conf are not touched. A host already at or above that Nix is
+# never downgraded. Expects _nix_installed_version (nix_version.yml).
 
 # The installer binary embeds the URL of the Nix tarball it installs; the
 # release is the same for every system, so the x86_64 binary answers for all.
+# A tagged installer never changes, so the controller keeps one per version.
 - name: Find the Nix release the pinned installer installs
   delegate_to: localhost
   run_once: true
   become: false
   ansible.builtin.shell: |
     set -euo pipefail
-    bin="$(mktemp)"
-    trap 'rm -f "$bin"' EXIT
-    curl -fsSL -o "$bin" "{{ nix_installer_url }}/nix-installer-x86_64-linux"
+    dir="${XDG_CACHE_HOME:-$HOME/.cache}/cvmfs-service"
+    bin="$dir/nix-installer-v{{ nix_installer_version }}-x86_64-linux"
+    if [ ! -s "$bin" ]; then
+      mkdir -p "$dir"
+      curl -fsSL -o "$bin.part" "{{ nix_installer_url }}/nix-installer-x86_64-linux"
+      mv "$bin.part" "$bin"
+    fi
     grep -a -o -m1 -E 'https://releases\.nixos\.org/nix/nix-[0-9]+\.[0-9]+\.[0-9]+/' "$bin" | head -n1
   args:
     executable: /bin/bash
   register: _nix_release
   changed_when: false
+  check_mode: false
   failed_when: _nix_release.rc != 0 or _nix_release.stdout | length == 0
 
-- name: Read the installed Nix version
-  ansible.builtin.command: /nix/var/nix/profiles/default/bin/nix --version
-  register: _nix_installed
-  changed_when: false
-
-- name: Compare it with the pinned release
+- name: Note the pinned Nix version
   ansible.builtin.set_fact:
-    nix_pinned_version: "{{ _nix_release.stdout | regex_search('nix-([0-9.]+)/$', '\\1') | first }}"
-    _nix_installed_version: "{{ _nix_installed.stdout.split() | last }}"
+    _nix_pinned_version: "{{ _nix_release.stdout | regex_search('nix-([0-9.]+)/$', '\\1') | first }}"
 
-# Fetches the release's store path for this system from its fallback-paths.nix
-# (cache.nixos.org substitutes it) and points the default profile at it.
-- name: Upgrade Nix in place to the pinned release
+- name: Upgrade to the pinned Nix (installed Nix older than the pin)
+  when: _nix_installed_version is version(_nix_pinned_version, '<')
   become: true
-  ansible.builtin.command: >-
-    nix upgrade-nix --nix-store-paths-url {{ _nix_release.stdout }}fallback-paths.nix
   environment:
     PATH: /nix/var/nix/profiles/default/bin:/usr/sbin:/usr/bin:/sbin:/bin
-  changed_when: true
-  when: _nix_installed_version != nix_pinned_version
+  block:
+    # Fetches the release's store path for this system from its
+    # fallback-paths.nix (cache.nixos.org substitutes it) and points the
+    # default profile at it.
+    - name: Upgrade Nix in place to the pinned release
+      ansible.builtin.command: >-
+        nix upgrade-nix --nix-store-paths-url {{ _nix_release.stdout }}fallback-paths.nix
+      register: _nix_upgrade
+      changed_when: true
 
-# The daemon's units are symlinks through the default profile, so they now
-# come from the new Nix too: reload, then restart onto it.
-- name: Restart nix-daemon on the upgraded Nix
+    # The daemon's units are symlinks through the default profile, so they now
+    # come from the new Nix too: reload, then restart onto it.
+    - name: Restart nix-daemon on the upgraded Nix
+      ansible.builtin.systemd:
+        name: nix-daemon.service
+        state: restarted
+        daemon_reload: true
+
+- name: Re-read the installed Nix version after the upgrade
+  ansible.builtin.include_tasks: nix_version.yml
+  when: _nix_upgrade is changed and not ansible_check_mode
+
+- name: The client runs the pinned Nix after the upgrade
+  ansible.builtin.assert:
+    that: _nix_installed_version == _nix_pinned_version
+    fail_msg: "nix upgrade-nix left Nix {{ _nix_installed_version }}, not the pinned {{ _nix_pinned_version }}"
+    quiet: true
+  when: _nix_upgrade is changed and not ansible_check_mode
+
+# Every run, upgrade or not: a daemon still on an older Nix than the profile
+# (a restart that failed after an earlier upgrade) is restarted onto it.
+- name: The daemon runs the installed Nix
   become: true
-  ansible.builtin.systemd:
-    name: nix-daemon.service
-    state: restarted
-    daemon_reload: true
-  when: _nix_installed_version != nix_pinned_version
-
-- name: The client and the daemon run the pinned Nix
-  ansible.builtin.shell: |
-    set -euo pipefail
-    nix --version
-    nix store info --store daemon 2>&1
-  args:
-    executable: /bin/bash
   environment:
     PATH: /nix/var/nix/profiles/default/bin:/usr/sbin:/usr/bin:/sbin:/bin
-  register: _nix_after
-  changed_when: false
-  failed_when: >-
-    _nix_after.rc != 0
-    or _nix_after.stdout_lines[0].split() | last != nix_pinned_version
-    or ('Version: ' ~ nix_pinned_version) not in _nix_after.stdout
-  when: _nix_installed_version != nix_pinned_version
+  block:
+    - name: Read the daemon's Nix version
+      ansible.builtin.command: nix store info --store daemon
+      register: _nix_daemon_info
+      changed_when: false
+      check_mode: false
+
+    - name: Restart nix-daemon onto the installed Nix
+      ansible.builtin.systemd:
+        name: nix-daemon.service
+        state: restarted
+        daemon_reload: true
+      register: _nix_daemon_restart
+      # nix store info prints to stderr on some Nix releases
+      when: >-
+        ('Version: ' ~ _nix_installed_version)
+        not in _nix_daemon_info.stdout_lines + _nix_daemon_info.stderr_lines
+
+    - name: Re-read the daemon's Nix version after the restart
+      ansible.builtin.command: nix store info --store daemon
+      register: _nix_daemon_after
+      changed_when: false
+      failed_when: >-
+        _nix_daemon_after.rc != 0
+        or ('Version: ' ~ _nix_installed_version) not in _nix_daemon_after.stdout_lines + _nix_daemon_after.stderr_lines
+      when: _nix_daemon_restart is changed and not ansible_check_mode
