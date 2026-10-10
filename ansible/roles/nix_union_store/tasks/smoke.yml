@@ -1,0 +1,46 @@
+---
+# Sandbox smoke build: the last step of a union run with the sandbox on
+# (nix_union_sandbox "true" or "root"). A minimal derivation built through the
+# daemon, so it runs as a build user ("true") or root ("root") inside the
+# sandbox, exactly like a real local build. The nonce makes it new every run,
+# so it is never cached; --no-link leaves its output unrooted for the weekly GC.
+# It reports no change: it checks the host, it does not configure it.
+
+# Test the daemon as configured by this run, not as it was before it.
+- name: Flush handlers so the daemon runs with this run's nix.conf
+  ansible.builtin.meta: flush_handlers
+
+- name: Sandboxed smoke build through the daemon
+  ansible.builtin.command:
+    argv:
+      - nix
+      - build
+      - --store
+      - daemon
+      - --no-link
+      - --print-out-paths
+      - --expr
+      - >-
+        derivation {
+        name = "sandbox-smoke";
+        system = "{{ nix_system }}";
+        builder = "/bin/sh";
+        args = [ "-c" "echo ok > $out" ];
+        nonce = "{{ now(utc=true).strftime('%Y%m%dT%H%M%S%f') }}-{{ 2147483647 | random }}";
+        }
+  register: _smoke
+  changed_when: false
+  failed_when: false
+
+- name: Fail if the sandboxed smoke build failed
+  ansible.builtin.fail:
+    msg: >-
+      The sandboxed smoke build failed on this Union Store host
+      (nix_union_sandbox: "{{ nix_union_sandbox }}"). Likely cause: the Nix
+      sandbox chroot on mergerfs. Nix creates the chroot under the store with
+      mode 0700, and mergerfs resolves every path as the build user, so the
+      build cannot see its own chroot (spike S2, ADR 0002). Stock Nix needs
+      the upstream fix tracked in grmhay/cvmfs-service#6; until then set
+      nix_union_sandbox to "root" or "false" for this host.
+      Nix said: {{ _smoke.stderr_lines | default([]) | map('trim') | select('match', 'error|>') | join(' ') }}
+  when: _smoke.rc != 0
