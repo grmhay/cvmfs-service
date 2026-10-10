@@ -15,7 +15,28 @@ cvmfs_repository: nix.hayweb.org
 nix_group: base
 nix_channel: stable
 
-# Determinate installer, pinned (Q11). Bump here; Ansible upgrades the fleet.
+# Determinate installer, pinned (Q11). Bumping the pin upgrades the fleet: a
+# host whose Nix differs from the one the pinned installer installs is moved to
+# it in place on the next run (tasks/upgrade.yml), then its daemon restarts; a
+# host already on it is not touched. After a bump, recheck nix_overlay_store_url
+# against `nix help-stores` for the new Nix.
+#
+# Each installer release installs one upstream Nix, fixed in its flake.nix and
+# embedded in the binary (the role reads it from there): v3.8.0 -> 2.30.0,
+# v3.11.3 -> 2.32.0, v3.17.0 -> 2.34.0, v3.23.1 -> 2.35.2. From v3.13.0 the
+# installer defaults to Determinate Nix, so the role asks for upstream Nix with
+# NIX_INSTALLER_PREFER_UPSTREAM_NIX (older releases ignore it).
+#
+# Upgrade method: `nix upgrade-nix`, pinned to the release's fallback-paths.nix
+# on releases.nixos.org. The installer has no upgrade command for upstream Nix:
+# v3.8.0's README documents `sudo -i nix upgrade-nix` for upstream installs and
+# `determinate-nixd upgrade` for Determinate Nix; later READMEs keep only the
+# latter. Their other route, uninstall and reinstall with another installer,
+# deletes /nix, RW Branch included, and a re-run of `install` on an installed
+# host refuses. upgrade-nix fetches through the daemon and only switches the
+# default profile, so the Union Store is left as it is. Without the explicit
+# URL it would follow the installer's upgrade-nix-store-path-url (Determinate's
+# moving "stable"), not the pin.
 nix_installer_version: "3.8.0"
 nix_installer_url: "https://install.determinate.systems/nix/tag/v{{ nix_installer_version }}"
 

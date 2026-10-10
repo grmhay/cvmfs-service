@@ -19,6 +19,13 @@
   args:
     creates: /nix/receipt.json
     executable: /bin/bash
+  environment:
+    # Installers from v3.13.0 default to Determinate Nix; v3.8.0 ignores this.
+    NIX_INSTALLER_PREFER_UPSTREAM_NIX: "true"
+  when: cvmfs_nix_mode != "thin"
+
+- name: Upgrade Nix when the installer pin moves
+  ansible.builtin.include_tasks: upgrade.yml
   when: cvmfs_nix_mode != "thin"
 
 # -- thin and cache modes need no mergerfs; union does.
