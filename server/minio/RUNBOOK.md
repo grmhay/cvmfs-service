@@ -5,17 +5,34 @@ policy and credentials are created — the Ansible roles **verify**, they never 
 
 ## 1. Rename and certificate (prerequisite, shared with Loki)
 
+**Done 2026-10-11** (homelab-opscontrolplane#126, PR #140). Kept as the record of what is in place and
+how it renews.
+
 Done once, in one change window, because Loki on pi2 stores to the same MinIO.
 
-1. Internal BIND: `minio.hayweb.org` → filer1 (CNAME). Confirm `dig minio.hayweb.org` from a LAN host
-   and from a cloud host over OpenVPN (internal DNS is pushed over the tunnel).
-2. `homelab-opscontrolplane`: add `minio.hayweb.org` to Caddy's DNS-01 names; deploy the
-   `truenas-cert-pusher` stack (watches the cert, pushes to the TrueNAS API; API key in SOPS).
-3. TrueNAS: point the MinIO app at the pushed certificate; restart the app.
-4. The S3 **API** port is `9000` (the console is `:9002`). Confirmed in spike S1: `/minio/health/live`
-   answers 200 there with `Server: MinIO`. Keep it when the app gets the new cert.
-5. pi2 Loki (hand-managed): change the S3 endpoint to `https://minio.hayweb.org:9000`, remove any
-   `insecure_skip_verify`/self-signed CA, restart Loki, watch ingestion resume (alloy buffers).
+- [x] Internal BIND: `minio.hayweb.org` CNAME → `filer1.hayweb.org` (dns-service, pidns1 and pidns2).
+      Confirmed from a LAN host. Not yet checked from a cloud host over OpenVPN.
+- [x] skyline's Caddy issues `minio.hayweb.org` by name.com DNS-01. The site only holds the
+      certificate (it answers 404); MinIO is served by filer1.
+- [x] The `truenas-cert-pusher` sidecar in Caddy's stack (repo `grmhay/truenas-cert-pusher`) imports
+      the certificate into TrueNAS and points the `minio` app at it (`network.certificate_id`), which
+      redeploys the app. Renewals follow the same path with no manual step. Its TrueNAS API key is
+      `TRUENAS_API_KEY` in the ops repo's `secrets/prod/caddy.enc.yaml`; rotation is in that repo's
+      `docs/recovery.md`.
+- [x] The S3 **API** port is `9000` (the console is `:9002`). Confirmed in spike S1:
+      `/minio/health/live` answers 200 there with `Server: MinIO`; after the switch it does so with a
+      verified Let's Encrypt chain.
+- [x] pi2 Loki (hand-managed): S3 endpoint `https://minio.hayweb.org:9000`, no
+      `insecure_skip_verify` or self-signed CA.
+
+Check at any time:
+
+```sh
+openssl s_client -connect minio.hayweb.org:9000 -servername minio.hayweb.org </dev/null 2>/dev/null \
+  | openssl x509 -noout -issuer -subject -enddate      # Let's Encrypt, CN=minio.hayweb.org
+```
+
+filer1's own API and UI (port 443) keep TrueNAS's self-signed certificate; only MinIO moved.
 
 ## 2. Bucket, policy, service account
 
