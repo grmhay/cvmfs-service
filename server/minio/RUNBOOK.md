@@ -36,21 +36,28 @@ filer1's own API and UI (port 443) keep TrueNAS's self-signed certificate; only 
 
 ## 2. Bucket, policy, service account
 
-From a `nix develop` shell (`mc` is in it):
+From the repo root in a `nix develop` shell (`mc`, `sops` and `jq` are in it), in your own terminal:
 
 ```sh
-mc alias set filer1 https://minio.hayweb.org:9000 <root-user> <root-password>
+mc alias set filer1 https://minio.hayweb.org:9000      # prompts for the root user and password
 mc mb filer1/cvmfs
 mc anonymous set-json server/minio/bucket-policy.json filer1/cvmfs   # GetObject only; no listing
-mc admin user svcacct add filer1 <root-user> --name cvmfs-publisher \
-   --policy <(cat <<'EOF'
-{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:*"],"Resource":["arn:aws:s3:::cvmfs","arn:aws:s3:::cvmfs/*"]}]}
-EOF
-)
+server/minio/create-publisher-key.sh filer1 <root user>
+mc alias remove filer1                                 # mc keeps the root password in ~/.mc in plain text
 ```
 
-Put the service-account key pair into `secrets/publisher.enc.yaml` (`minio_access_key`,
-`minio_secret_key`) with `sops --encrypt --in-place`.
+`create-publisher-key.sh` creates the `cvmfs-publisher` service account with
+`publisher-policy.json` and writes its keys to `secrets/publisher.enc.yaml`
+(`minio_access_key`, `minio_secret_key`), encrypted for the ops age recipient. The secret
+key is never shown or written in plain text, and only the public recipient is needed, so any
+workstation can run it. Later keys (`nixbuild_private_key`, `deploy_key_private`) are added
+with `sops --set` on a host with the age key.
+
+The publisher's policy covers objects in `cvmfs` plus listing it. It deliberately leaves out
+bucket administration, so a leaked publisher key cannot change the anonymous policy or delete
+the bucket. If `cvmfs_server` hits `AccessDenied` on an operation the policy lacks, add that
+action to `publisher-policy.json` and update the account with
+`mc admin user svcacct edit filer1 <access key> --policy server/minio/publisher-policy.json`.
 
 ## 3. Verify
 
@@ -59,7 +66,10 @@ CVMFS_REPOSITORY=nix.hayweb.org MINIO_URL=https://minio.hayweb.org:9000 \
   CACHE_URL=http://cache1.hayweb.org nix run .#verify-origin
 ```
 
-Before the Repository exists the two manifest checks fail; the TLS and policy checks must pass.
+Before the Repository exists the three repository checks fail (`.cvmfspublished` from the bucket
+and both cache checks). The TLS check and the two policy checks must pass: an anonymous GET of a
+missing object returns `NoSuchKey` (the bucket exists and the policy allows reads) and an
+anonymous LIST returns `AccessDenied`.
 
 ## Known pitfalls (CVMFS on S3)
 
