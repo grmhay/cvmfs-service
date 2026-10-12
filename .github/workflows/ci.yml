@@ -29,7 +29,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: DeterminateSystems/nix-installer-action@v16
       - name: shellcheck
-        run: nix run nixpkgs#shellcheck -- publish/*.sh spikes/*.sh
+        run: nix run nixpkgs#shellcheck -- publish/*.sh spikes/*.sh server/minio/*.sh
       - name: ansible-lint
         run: cd ansible && nix run nixpkgs#ansible-lint -- --offline playbooks/ roles/
       - name: yamllint

@@ -1,10 +1,13 @@
 # Secrets
 
-Only `*.enc.yaml` is committed. Plaintext shapes (create, fill, `sops --encrypt --in-place`):
+Only `*.enc.yaml` is committed. Plaintext shapes are below. Add a key to an existing file with
+`sops --set` on a host with the age key.
 
-`publisher.enc.yaml` — decrypted on the control node by the `cvmfs_publisher` role:
+`publisher.enc.yaml` — decrypted on the control node by the `cvmfs_publisher` role. It is
+created by `server/minio/create-publisher-key.sh` (server/minio/RUNBOOK.md §2), which writes the
+two MinIO keys; the others are added later with `sops --set`:
 ```yaml
-minio_access_key: ""        # service account from server/minio/RUNBOOK.md
+minio_access_key: ""        # the cvmfs-publisher service account
 minio_secret_key: ""
 nixbuild_private_key: |     # ssh key the Publisher uses to reach pi5/pi6 (ssh-keygen -t ed25519)
   -----BEGIN OPENSSH PRIVATE KEY-----

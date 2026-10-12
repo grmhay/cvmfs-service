@@ -5,7 +5,7 @@ runbooks. Read `CONTEXT.md` first and use its vocabulary (Repository, Publisher,
 
 ## Environment
 - Work inside `nix develop` (ansible, ansible-lint, sops, age, mc, shellcheck, yamllint)
-- Validate before committing: `nix flake check`, `shellcheck publish/*.sh spikes/*.sh`, `(cd ansible && ansible-lint --offline playbooks/ roles/)`
+- Validate before committing: `nix flake check`, `shellcheck publish/*.sh spikes/*.sh server/minio/*.sh`, `(cd ansible && ansible-lint --offline playbooks/ roles/)`
 
 ## Conventions
 - A Profile is a `buildEnv`; collisions must fail the build — never fix one with PATH order

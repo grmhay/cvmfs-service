@@ -58,6 +58,9 @@ bucket administration, so a leaked publisher key cannot change the anonymous pol
 the bucket. If `cvmfs_server` hits `AccessDenied` on an operation the policy lacks, add that
 action to `publisher-policy.json` and update the account with
 `mc admin user svcacct edit filer1 <access key> --policy server/minio/publisher-policy.json`.
+Untested until the first `cvmfs_server mkfs` (#3): CVMFS sends an `x-amz-acl` header on uploads
+(`CVMFS_S3_X_AMZ_ACL`, default `public-read`); if PUTs are refused, `s3:PutObjectAcl` is the
+first candidate.
 
 ## 3. Verify
 
@@ -66,7 +69,7 @@ CVMFS_REPOSITORY=nix.hayweb.org MINIO_URL=https://minio.hayweb.org:9000 \
   CACHE_URL=http://cache1.hayweb.org nix run .#verify-origin
 ```
 
-Before the Repository exists the three repository checks fail (`.cvmfspublished` from the bucket
+Before the Repository exists the three Repository checks fail (`.cvmfspublished` from the bucket
 and both cache checks). The TLS check and the two policy checks must pass: an anonymous GET of a
 missing object returns `NoSuchKey` (the bucket exists and the policy allows reads) and an
 anonymous LIST returns `AccessDenied`.

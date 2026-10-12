@@ -28,7 +28,7 @@ check "TLS chain verifies for $host" \
   bash -c "openssl s_client -connect '$host' -servername '${host%%:*}' </dev/null 2>/dev/null | grep -q 'Verify return code: 0'"
 # MinIO answers AccessDenied to anonymous requests for a bucket that does not
 # exist as well as for one without the policy. NoSuchKey for a missing object
-# proves both the bucket and the anonymous-GET policy, before any repository
+# proves both the bucket and the anonymous-GET policy, before the Repository
 # is published.
 check "anonymous GET allowed on $bucket (missing object is NoSuchKey)" \
   test "$(s3_code "$minio/$bucket/.verify-origin-probe")" = NoSuchKey
