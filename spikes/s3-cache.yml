@@ -1,0 +1,11 @@
+---
+# Spike S3: the cvmfs_nginx_cache role on the spike VM, in front of the scratch
+# bucket. From ansible/: ansible-playbook -i <vm>, -u ansible ../spikes/s3-cache.yml
+- name: Cache in front of the scratch bucket
+  hosts: all
+  vars:
+    cvmfs_repository: spike.hayweb.org
+    cache_bucket: cvmfs-spike
+    cache_max_size: 2g
+  roles:
+    - cvmfs_nginx_cache

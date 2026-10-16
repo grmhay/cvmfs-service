@@ -76,9 +76,13 @@ anonymous LIST returns `AccessDenied`.
 
 ## Known pitfalls (CVMFS on S3)
 
-- `cvmfs_server mkfs` against an existing bucket **re-initialises** the repository. Never re-run it
-  on a populated bucket; import with `cvmfs_server import` instead.
+- `cvmfs_server mkfs` refuses a location that already holds a `.cvmfspublished` (`-I` forces it and
+  **re-initialises** the repository). Never re-run it on a populated bucket; import with
+  `cvmfs_server import` instead. `rmfs` does not delete the bucket's objects.
 - A lost `.cvmfsreflog`: `cvmfs_server check -r`. A lost `.cvmfspublished`: re-upload from the
   publisher's `/srv/cvmfs/<repo>` copy, then `cvmfs_server resign -p`.
-- Clients must be able to fetch `.cvmfspublished` over plain HTTP at the `-w` URL given to `mkfs`
-  (that is the Cache's URL, not the bucket's).
+- The `-w` URL given to `mkfs` is the bucket (`https://minio.hayweb.org:9000/cvmfs`), not the
+  Cache. It is only the Publisher's own read path (`CVMFS_STRATUM0`; `cvmfs_server` appends
+  `/<repo>`), and the Publisher reads `.cvmfsreflog` and `.cvmfspublished` back seconds after writing
+  them: through the Cache it gets the previous copies and fails with "data corruption in
+  .cvmfsreflog" (spike S3). Clients set their own URL to the Cache (`CVMFS_SERVER_URL`).

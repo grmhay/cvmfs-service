@@ -11,8 +11,12 @@ publisher_interval: 5min
 publisher_timer_enabled: false    # enable after the first manual publish succeeds
 publisher_secrets_file: "{{ playbook_dir }}/../../secrets/publisher.enc.yaml"
 
-# Clients' URL, recorded in the repository at mkfs time (-w).
-cvmfs_stratum0_url: "http://cache1.hayweb.org/cvmfs/{{ cvmfs_repository }}"
+# mkfs -w: where the Publisher reads its own repository back (CVMFS_STRATUM0;
+# cvmfs_server appends /<repository>). The bucket itself, never the Cache: a
+# cached .cvmfsreflog or .cvmfspublished from seconds earlier fails the commit
+# with "data corruption in .cvmfsreflog" (spike S3). Clients set their own URL
+# (cvmfs_client: CVMFS_SERVER_URL -> cache1).
+cvmfs_stratum0_url: "https://{{ cvmfs_s3_host }}/{{ cvmfs_s3_bucket }}"
 cvmfs_s3_host: "minio.hayweb.org:9000"   # S3 API port (confirmed in S1; the console is 9002)
 cvmfs_s3_bucket: cvmfs
 cvmfs_repository_ttl: 240                # seconds; default (Q16)

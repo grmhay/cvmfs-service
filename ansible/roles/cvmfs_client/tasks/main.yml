@@ -18,9 +18,10 @@
 - name: Install the CVMFS client
   become: true
   ansible.builtin.package:
-    name:
-      - cvmfs
-      - cvmfs-config-none   # no default (CERN) repositories
+    # cernvm ships no cvmfs-config-none for Debian 13 or EL10 (spike S3);
+    # cvmfs pulls in cvmfs-config-default. default.local limits the mounts
+    # to our repository.
+    name: cvmfs
     state: present
     update_cache: true
 

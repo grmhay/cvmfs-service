@@ -12,7 +12,7 @@
 - name: Install the server tools
   become: true
   ansible.builtin.apt:
-    name: [cvmfs, cvmfs-server, cvmfs-config-none, apache2, git]
+    name: [cvmfs, cvmfs-server, apache2, git, sqlite3]
     state: present
     update_cache: true
 

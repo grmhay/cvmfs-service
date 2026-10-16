@@ -16,8 +16,9 @@ server {
     access_log /var/log/nginx/cvmfs-access.log cvmfs;
 
     # Mutable manifests: short TTL, never serve a stale manifest on error.
-    location ~ ^/cvmfs/[^/]+/\.cvmfs(published|whitelist|reflog)$ {
-        proxy_pass {{ cache_origin_url }}/{{ cache_bucket }}$uri;
+    # /cvmfs/<repo>/.cvmfspublished -> <bucket>/<repo>/.cvmfspublished
+    location ~ ^/cvmfs/(?<cvmfs_manifest>[^/]+/\.cvmfs(published|whitelist|reflog))$ {
+        proxy_pass {{ cache_origin_url }}/{{ cache_bucket }}/$cvmfs_manifest;
         proxy_cache cvmfs;
         proxy_cache_valid 200 30s;
         proxy_cache_valid 404 5s;
