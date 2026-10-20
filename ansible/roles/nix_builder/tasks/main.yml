@@ -16,12 +16,22 @@
     key_options: 'restrict,command="/nix/var/nix/profiles/default/bin/nix-store --serve --write"'
   when: nix_builder_authorized_key | length > 0
 
-- name: Trust the build user and set job slots
+# nix_union_store owns nix.conf and includes this drop-in; editing nix.conf
+# itself would undo that role's template on every run, and the restart with it.
+- name: Nix drop-in directory
   become: true
-  ansible.builtin.blockinfile:
-    path: /etc/nix/nix.conf
-    marker: "# {mark} nix_builder"
-    block: |
+  ansible.builtin.file:
+    path: /etc/nix/nix.conf.d
+    state: directory
+    mode: "0755"
+
+- name: Trust the build user and set job slots (nix.conf drop-in)
+  become: true
+  ansible.builtin.copy:
+    dest: /etc/nix/nix.conf.d/nix_builder.conf
+    mode: "0644"
+    content: |
+      # Managed by cvmfs-service (role nix_builder), included by nix.conf.
       max-jobs = {{ nix_builder_max_jobs }}
-      trusted-users = root @wheel {{ nix_builder_user }}
+      extra-trusted-users = {{ nix_builder_user }}
   notify: Restart nix-daemon

@@ -1,7 +1,7 @@
 ---
 # Late part of the Publisher, run AFTER cvmfs_client and nix_union_store
 # (playbooks/publisher.yml), because it needs Nix and the union store:
-# ssh keys -> remote builders in nix.conf -> clone -> resign and publish units.
+# ssh keys -> remote builders (nix.conf drop-in) -> clone -> resign and publish units.
 # The publish reconciler builds with Nix and writes into the repository's
 # Lower Store, so its timer only starts once the client mount and the union
 # store are up. Expects repository.yml to have run in the same play
@@ -52,19 +52,29 @@
     dest: /root/.ssh/config
     mode: "0600"
 
-- name: Remote builders in nix.conf
+# nix_union_store owns nix.conf and includes this drop-in; editing nix.conf
+# itself would undo that role's template on every run, and the restart with it.
+- name: Nix drop-in directory
   become: true
-  ansible.builtin.blockinfile:
-    path: /etc/nix/nix.conf
-    marker: "# {mark} cvmfs_publisher"
-    block: |
+  ansible.builtin.file:
+    path: /etc/nix/nix.conf.d
+    state: directory
+    mode: "0755"
+
+- name: Remote builders in the nix.conf drop-in
+  become: true
+  ansible.builtin.copy:
+    dest: /etc/nix/nix.conf.d/cvmfs_publisher.conf
+    mode: "0644"
+    content: |
+      # Managed by cvmfs-service (role cvmfs_publisher), included by nix.conf.
       {% set specs = [] -%}
       {% for b in nix_remote_builders -%}
       {% set _ = specs.append("ssh://" ~ nix_builder_user ~ "@" ~ b.host ~ " " ~ b.system ~ " /root/.ssh/id_nixbuild " ~ b.max_jobs ~ " " ~ b.speed) -%}
       {% endfor -%}
       builders = {{ specs | join(' ; ') }}
       builders-use-substitutes = true
-      trusted-users = root @wheel {{ publisher_user }}
+      extra-trusted-users = {{ publisher_user }}
   notify: Restart nix-daemon
 
 - name: Clone this repo for the publish reconciler

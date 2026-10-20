@@ -27,3 +27,10 @@ require-sigs = false
 {% else %}
 experimental-features = nix-command flakes
 {% endif %}
+
+# This role owns this file: other roles never edit it. They write a drop-in,
+# included here, last, so it can add to the settings above (extra-trusted-users)
+# or override them. Paths are relative to this file; a missing one is skipped.
+# Nix's include takes no globs, so each drop-in is named here.
+!include nix.conf.d/cvmfs_publisher.conf
+!include nix.conf.d/nix_builder.conf
