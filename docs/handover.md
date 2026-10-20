@@ -2,9 +2,11 @@
 
 State of the work as of **2026-10-19**. Design: `plans/0001-nix-over-cvmfs.md`; vocabulary: `CONTEXT.md`.
 
-Phase 0 (prerequisites and spikes) is done apart from one deferred check. **One open issue is ready
-for an agent: #14**, the chroot-fix Nix fork on the canaries. Every other open issue waits on
-something outside this repo or on the user.
+Phase 0 (prerequisites and spikes) is done apart from one deferred check. All four long-lived VMs
+now exist. **Phase 1 (the Origin) is ready to run once grmhay/ansible-lab-config#113 lands**: the
+Publisher's first-run problems found on 2026-10-19 (#15, #16, the master key, nix.conf) are fixed on
+master, but none of it has run on a real host. #14, the chroot-fix Nix fork on the canaries, was
+in progress in another session (uncommitted in the main checkout) at the time of writing.
 
 ## Where things stand
 
@@ -15,26 +17,46 @@ something outside this repo or on the user.
 | S3 mkfs/publish against MinIO (#3) | done and closed 2026-10-19: `docs/spikes/S3-mkfs-minio.md` |
 | MinIO rename + Let's Encrypt cert (homelab-opscontrolplane#126) | done 2026-10-11; the `truenas-cert-pusher` sidecar in Caddy's stack on skyline renews it |
 | Bucket `cvmfs`, policy, `cvmfs-publisher` account (#4) | done; keys in `secrets/publisher.enc.yaml`. **Open by choice:** the `verify-origin` run from a cloud host over OpenVPN |
-| Long-lived VMs (#5) | canaries `nixcanary-deb1` (103) and `nixcanary-rhel1` (109) done. `publisher` and `cache1` wait, see below |
+| Long-lived VMs (#5) | all four exist: canaries `nixcanary-deb1` (103), `nixcanary-rhel1` (109); `publisher` (111, 192.168.20.118, 100 GB) and `cache1` (112, 192.168.20.119, 120 GB), created 2026-10-19, verify passed. NetBox fields/tags wait for ansible-lab-config#113 |
+| Publisher first run (#15, #16) | fixed on master, not yet run: see "Next: Phase 1" |
 | Upstream chroot-parent fix (#9) | the user's, by hand. Nothing is filed on NixOS/nix by an agent |
 | Nix sandbox on the union (#6 parent, #13) | fleet-wide: waits for a Nix release with the #9 fix, then a Determinate installer that ships it |
-| Chroot-fix fork on the canaries (#14) | **ready for an agent.** #6 was amended on 2026-10-19 to allow it on `nix-canary` hosts only |
+| Chroot-fix fork on the canaries (#14) | `ready-for-agent`; another session had it in progress on 2026-10-19 (uncommitted in the main checkout). #6 was amended on 2026-10-19 to allow it on `nix-canary` hosts only |
 
-## Next: building `publisher` and `cache1` (#5)
+## Next: Phase 1, the Origin (`publisher.yml` on VMID 111)
 
-Two things stand in the way, and one fix needs proving. Check each before starting:
+**Waits on grmhay/ansible-lab-config#113** (NetBox as inventory source). The play targets the group
+`nix_publisher` from the device role, and host facts come from NetBox: do not run it with a hand-made
+inventory. Once #113 lands, set the NetBox device roles (`nix_publisher` on publisher, `nix_cache` on
+cache1), the custom fields and the `pi5`/`pi6`/`pi7` tags from #5's table, then remove `blocked` from #5
+and close it.
 
-1. **grmhay/ansible-lab-config#113** (NetBox as inventory source: `nix_group`, `nix_channel`, tags) is still open
-   but moving: its pin of this repo is done, using the `v0.1.0` tag (see "Ansible collection" below).
-2. **VM templates.** packer-service#100 (grow the root LV to the disk size) merged on 2026-10-09. Issue 5 says the
-   templates must be rebuilt with it; whether they have been was not checked.
-3. **The resolver rate limit: fix chosen, not yet proven.** After a burst of lookups, both LAN resolvers
-   (192.168.40.17, 192.168.50.17) answered `REFUSED` to the spike Publisher for minutes. 1fadef6 gives
-   `cvmfs_publisher` a local caching systemd-resolved stub that forwards to `publisher_dns_upstreams`, with no
-   public fallback, and a dig check through the stub. It has not run on a host yet. On the first `publisher`
-   build, publish and run `cvmfs_server check`, then confirm no `REFUSED` (S3 doc, "Resolver rate limit").
+**Collection tag:** #113 pins this repo at `v0.1.0`, which predates everything below. A new tag is
+needed before the playbook runs through the collection (ask the user; tagging is outward-facing).
 
-Remove `blocked` from #5 only when 1 and 2 are cleared.
+Fixed on master on 2026-10-19, none of it run on a real host yet:
+
+- **Resolver rate limit** (1fadef6): `cvmfs_publisher` installs a local caching systemd-resolved stub
+  forwarding to `publisher_dns_upstreams`, no public fallback, with a dig check through the stub. On the
+  first publish and `cvmfs_server check`, confirm no `REFUSED` (S3 doc, "Resolver rate limit").
+- **Order + master key** (d03e127): the repository part (mkfs, `.pub` fetch) runs before `cvmfs_client`
+  and `nix_union_store`; the publishing part comes last. A guard fails the play if
+  `/etc/cvmfs/keys/<repo>.masterkey` is still on the Publisher (except on the mkfs run, or with
+  `publisher_allow_masterkey: true` during `resign`). `nix run .#masterkey-escrow` streams it into
+  `secrets/masterkey.enc.yaml` and shreds it after a hash match.
+- **Mount clash** (#15, ADR 0004): the Publisher's client view is at `/cvmfs-client/nix.hayweb.org`
+  (`cvmfs_client_mountpoint`), reading through the Cache; `cvmfs_server` keeps `/cvmfs/nix.hayweb.org`.
+- **nix.conf** (dca29c2): `nix_union_store` owns `nix.conf`; the Publisher and builders write
+  `/etc/nix/nix.conf.d/*.conf` drop-ins with `extra-trusted-users`. Expect one nix-daemon restart per
+  host on the first run after this lands.
+- **Empty repository** (#16): `publisher.yml` sets `nix_union_defer_until_published`, so the first runs
+  leave `/nix/store` plain until a publish creates the Lower Store. Everywhere else an empty repository fails.
+
+The sequence is `docs/runbooks/publisher-bootstrap.md`: playbook → `masterkey-escrow` + commit the
+secret and `.pub` → re-run → first publish by hand (`sudo systemctl start cvmfs-publish.service`) →
+wait out the TTL → re-run to assemble the union. Watch on that run: the two mounts across a reboot,
+`cvmfs_server transaction`/`publish` with the second client instance up, the `findmnt`/`cvmfs_talk`
+probe output, and the store migration into the RW Branch.
 
 ## Next for an agent: the canary fork (#14)
 
@@ -69,7 +91,10 @@ projects get the loop and the triage labels doc on `copier update`; their `CLAUD
   they need means a new tag.
 
 - **vm-service:** `--prefix 192.168.20.0/24` lets it pick a clean address from NetBox's reservable range; there
-  is no NetBox token in this environment for looking one up. Its first-boot Ansible run keeps going after
+  is no NetBox token in this environment for looking one up. `get-job` does not print config/verify state:
+  `GET $VM_SERVICE_URL/jobs/<id>` with the `.env` `API_TOKEN` does. Changes land on vm-service `main` through
+  merged PRs, not direct pushes. Until vm-service#209's fix (PR #210, merged 2026-10-19) is deployed, new VMs
+  get a short FQDN (`hostname -f` without `hayweb.org`); 103, 109, 111 and 112 keep it until re-created or patched. Its first-boot Ansible run keeps going after
   `create-vm` returns, so wait for it before using apt. A re-created VM keeps its name, so remove the stale
   `known_hosts` entry. Confirm a VMID with `get-vm` before `destroy-vm`.
 - **Auto mode** blocked these until the user explicitly asked for them: `vm_service create-vm`, uploads to the
@@ -89,6 +114,10 @@ projects get the loop and the triage labels doc on `copier update`; their `CLAUD
 - Confirm before outward-facing actions (issues, PRs, pushes) unless asked.
 
 ## Other loose ends
+
+- The main checkout's local `master` was left at 63967c9 on 2026-10-19 (behind origin), because it held the
+  #14 session's uncommitted `nix_union_store` changes, which overlap #15's `defaults/main.yml` edit. That
+  work must be committed and rebased onto `origin/master` before pulling.
 
 - pidns1 and pidns2 report different `hayweb.org` SOA serials: seen 2026-10-16, still different on 2026-10-19
   (1771979346 on 192.168.40.17, 1771807930 on 192.168.50.17). Not investigated.
