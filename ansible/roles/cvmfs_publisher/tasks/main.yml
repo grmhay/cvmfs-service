@@ -101,6 +101,60 @@
       trusted-users = root @wheel {{ publisher_user }}
   notify: Restart nix-daemon
 
+# Local DNS cache before anything talks to the Origin: a publish looks up
+# minio.hayweb.org once per S3 request, and the LAN resolvers answer REFUSED
+# once a client passes their per-client rate limit (spike S3, "Open: the
+# resolver refuses the Publisher"). systemd-resolved caches for the record's
+# TTL (300 s / 3600 s today) and forwards to the same upstreams.
+# Config first, so the daemon starts with the right upstreams when the
+# package's postinst points /etc/resolv.conf at the stub.
+- name: Local DNS cache config dir
+  become: true
+  ansible.builtin.file:
+    path: /etc/systemd/resolved.conf.d
+    state: directory
+    mode: "0755"
+
+- name: Local DNS cache config
+  become: true
+  ansible.builtin.template:
+    src: resolved.conf.j2
+    dest: /etc/systemd/resolved.conf.d/cvmfs-publisher.conf
+    mode: "0644"
+  notify: Restart systemd-resolved
+
+- name: Install the local DNS cache
+  become: true
+  ansible.builtin.apt:
+    name: [systemd-resolved, bind9-dnsutils]
+    state: present
+
+- name: Local DNS cache on
+  become: true
+  ansible.builtin.systemd:
+    name: systemd-resolved.service
+    enabled: true
+    state: started
+
+- name: Resolv.conf points at the local stub
+  become: true
+  ansible.builtin.file:
+    path: /etc/resolv.conf
+    src: /run/systemd/resolve/stub-resolv.conf
+    state: link
+    force: true
+
+- name: Apply the local DNS cache config
+  ansible.builtin.meta: flush_handlers
+
+- name: Verify the local DNS cache answers for the Origin
+  ansible.builtin.command: "dig +short +time=2 +tries=1 {{ publisher_dns_probe }} @127.0.0.53"
+  register: _dns_probe
+  changed_when: false
+  failed_when: >-
+    _dns_probe.rc != 0 or
+    (_dns_probe.stdout_lines | select('match', '^[0-9.]+$') | list | length == 0)
+
 - name: S3 backend config
   become: true
   ansible.builtin.template:

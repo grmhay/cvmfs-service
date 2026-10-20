@@ -21,6 +21,15 @@ cvmfs_s3_host: "minio.hayweb.org:9000"   # S3 API port (confirmed in S1; the con
 cvmfs_s3_bucket: cvmfs
 cvmfs_repository_ttl: 240                # seconds; default (Q16)
 
+# Local DNS cache (systemd-resolved, stub on 127.0.0.53): the LAN resolvers
+# REFUSE a client that passes their per-client rate limit, and a publish looks
+# up the Origin once per S3 request (spike S3). Empty upstreams: use the
+# per-link servers DHCP hands to systemd-networkd instead (under ifupdown, set
+# them here: resolved does not learn dhclient's servers).
+publisher_dns_upstreams: [192.168.40.17, 192.168.50.17]
+publisher_dns_domains: [hayweb.org]      # search domains: pi5/pi6 are short names
+publisher_dns_probe: "{{ cvmfs_s3_host.split(':') | first }}"   # verify lookup: the Origin
+
 nix_remote_builders:
   - { host: pi5, system: aarch64-linux, max_jobs: 4, speed: 1 }
   - { host: pi6, system: aarch64-linux, max_jobs: 4, speed: 1 }

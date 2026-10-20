@@ -9,3 +9,9 @@
   ansible.builtin.systemd:
     name: nix-daemon.service
     state: restarted
+
+- name: Restart systemd-resolved
+  become: true
+  ansible.builtin.systemd:
+    name: systemd-resolved.service
+    state: restarted

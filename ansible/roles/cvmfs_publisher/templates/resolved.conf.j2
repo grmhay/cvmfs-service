@@ -1,0 +1,16 @@
+# Managed by cvmfs-service (role cvmfs_publisher). Local caching stub on
+# 127.0.0.53, so a publish's per-request lookups of the Origin stay off the
+# LAN resolvers' per-client rate limit (spike S3).
+[Resolve]
+{% if publisher_dns_upstreams %}
+DNS={{ publisher_dns_upstreams | join(' ') }}
+{% endif %}
+Domains={{ publisher_dns_domains | join(' ') }}
+# No public fallback: hayweb.org internals do not resolve outside, so losing
+# the LAN resolvers should fail loudly rather than answer from elsewhere.
+FallbackDNS=
+Cache=yes
+DNSStubListener=yes
+DNSSEC=no
+LLMNR=no
+MulticastDNS=no
