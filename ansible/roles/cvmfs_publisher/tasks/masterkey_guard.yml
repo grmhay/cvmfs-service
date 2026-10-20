@@ -1,0 +1,30 @@
+---
+# The master key lives in SOPS (secrets/masterkey.enc.yaml), never on the
+# Publisher except during a resign (docs/runbooks/resign.md). mkfs leaves it
+# in /etc/cvmfs/keys, so:
+#   - the run that has just created the repository (_mkfs changed) finishes,
+#     and ends with a reminder (publishing.yml);
+#   - any later run fails here until publish/masterkey-escrow.sh has moved
+#     the key into SOPS, unless publisher_allow_masterkey is true (a resign
+#     in progress).
+# First-run sequence: docs/runbooks/publisher-bootstrap.md.
+
+- name: Look for the master key
+  ansible.builtin.stat:
+    path: "{{ publisher_masterkey_path }}"
+    get_checksum: false
+  register: _masterkey
+
+- name: Master key is not on the Publisher
+  ansible.builtin.assert:
+    that: >-
+      not _masterkey.stat.exists
+      or (publisher_allow_masterkey | bool)
+      or (_mkfs is defined and _mkfs is changed)
+    fail_msg: >-
+      {{ publisher_masterkey_path }} is on the Publisher. Move it into SOPS first:
+      from a nix develop shell on the workstation, run
+      `nix run .#masterkey-escrow` (publish/masterkey-escrow.sh), then re-run this playbook.
+      To run with the key in place (a resign in progress), pass -e publisher_allow_masterkey=true.
+      See docs/runbooks/publisher-bootstrap.md.
+    quiet: true

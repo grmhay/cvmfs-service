@@ -1,0 +1,127 @@
+---
+# Late part of the Publisher, run AFTER cvmfs_client and nix_union_store
+# (playbooks/publisher.yml), because it needs Nix and the union store:
+# ssh keys -> remote builders in nix.conf -> clone -> resign and publish units.
+# The publish reconciler builds with Nix and writes into the repository's
+# Lower Store, so its timer only starts once the client mount and the union
+# store are up. Expects repository.yml to have run in the same play
+# (publisher_secrets, _masterkey).
+
+- name: Ssh directory
+  become: true
+  ansible.builtin.file:
+    path: "{{ publisher_home }}/.ssh"
+    state: directory
+    owner: "{{ publisher_user }}"
+    mode: "0700"
+
+- name: Builder key and deploy key
+  become: true
+  ansible.builtin.copy:
+    content: "{{ item.content }}"
+    dest: "{{ publisher_home }}/.ssh/{{ item.name }}"
+    owner: "{{ publisher_user }}"
+    mode: "0600"
+  loop:
+    - { name: id_nixbuild, content: "{{ publisher_secrets.nixbuild_private_key }}" }
+    - { name: id_deploy, content: "{{ publisher_secrets.deploy_key_private }}" }
+  loop_control: { label: "{{ item.name }}" }
+  no_log: true
+
+- name: Ssh config for builders and GitHub
+  become: true
+  ansible.builtin.template:
+    src: ssh_config.j2
+    dest: "{{ publisher_home }}/.ssh/config"
+    owner: "{{ publisher_user }}"
+    mode: "0600"
+
+# Remote builders are a daemon (root) setting: the root user needs the same key.
+- name: Root ssh key for remote builds
+  become: true
+  ansible.builtin.copy:
+    content: "{{ publisher_secrets.nixbuild_private_key }}"
+    dest: /root/.ssh/id_nixbuild
+    mode: "0600"
+  no_log: true
+
+- name: Root ssh config
+  become: true
+  ansible.builtin.template:
+    src: ssh_config.j2
+    dest: /root/.ssh/config
+    mode: "0600"
+
+- name: Remote builders in nix.conf
+  become: true
+  ansible.builtin.blockinfile:
+    path: /etc/nix/nix.conf
+    marker: "# {mark} cvmfs_publisher"
+    block: |
+      {% set specs = [] -%}
+      {% for b in nix_remote_builders -%}
+      {% set _ = specs.append("ssh://" ~ nix_builder_user ~ "@" ~ b.host ~ " " ~ b.system ~ " /root/.ssh/id_nixbuild " ~ b.max_jobs ~ " " ~ b.speed) -%}
+      {% endfor -%}
+      builders = {{ specs | join(' ; ') }}
+      builders-use-substitutes = true
+      trusted-users = root @wheel {{ publisher_user }}
+  notify: Restart nix-daemon
+
+- name: Clone this repo for the publish reconciler
+  become: true
+  become_user: "{{ publisher_user }}"
+  ansible.builtin.git:
+    repo: "{{ publisher_repo_url }}"
+    dest: "{{ publisher_repo_dir }}"
+    version: master
+    accept_hostkey: true
+    key_file: "{{ publisher_home }}/.ssh/id_deploy"
+
+- name: State dir
+  become: true
+  ansible.builtin.file:
+    path: "{{ publisher_state_dir }}"
+    state: directory
+    owner: "{{ publisher_user }}"
+    mode: "0755"
+
+- name: Resign and publish units
+  become: true
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    mode: "0644"
+  loop:
+    - cvmfs-publish.service
+    - cvmfs-publish.timer
+    - cvmfs-resign.service
+    - cvmfs-resign.timer
+  notify: Reload systemd
+
+- name: Flush handlers
+  ansible.builtin.meta: flush_handlers
+
+- name: Resign timer on
+  become: true
+  ansible.builtin.systemd:
+    name: cvmfs-resign.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Publish timer state (disabled until the first manual publish succeeds)
+  become: true
+  ansible.builtin.systemd:
+    name: cvmfs-publish.timer
+    enabled: "{{ publisher_timer_enabled }}"
+    state: "{{ 'started' if publisher_timer_enabled else 'stopped' }}"
+
+# First run only: the guard let the play finish with the key still here.
+- name: Remind to move the master key into SOPS
+  ansible.builtin.debug:
+    msg: >-
+      {{ publisher_masterkey_path }} is still on the Publisher. Before the next run of this playbook,
+      run `nix run .#masterkey-escrow` from a nix develop shell on the workstation
+      (docs/runbooks/publisher-bootstrap.md), then commit secrets/masterkey.enc.yaml and
+      ansible/roles/cvmfs_client/files/{{ cvmfs_repository }}.pub.
+  when: _masterkey.stat.exists and not (publisher_allow_masterkey | bool)

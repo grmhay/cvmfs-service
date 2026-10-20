@@ -45,8 +45,8 @@
           (g: { name = "profile-${g}"; value = profileFor g; })
           groups);
 
-        ## Publishing tools run on the Publisher only; they wrap the scripts
-        ## in publish/ with their runtime dependencies pinned.
+        ## Publishing tools run on the Publisher (masterkey-escrow excepted);
+        ## they wrap the scripts in publish/ with their runtime dependencies pinned.
         mkApp = name: runtimeInputs: {
           type = "app";
           program = "${pkgs.writeShellApplication {
@@ -72,6 +72,9 @@
           publish = mkApp "publish" [ pkgs.nix pkgs.git pkgs.jq pkgs.coreutils pkgs.sqlite ];
           promote = mkApp "promote" [ pkgs.nix pkgs.git pkgs.jq pkgs.coreutils ];
           verify-origin = mkApp "verify-origin" [ pkgs.curl pkgs.openssl pkgs.jq pkgs.coreutils pkgs.gnused pkgs.gnugrep ];
+          ## Runs on the workstation, not the Publisher: moves the master key
+          ## that mkfs leaves behind into secrets/ (docs/runbooks/publisher-bootstrap.md).
+          masterkey-escrow = mkApp "masterkey-escrow" [ pkgs.sops pkgs.openssh pkgs.coreutils pkgs.gnused ];
         };
 
         ## `nix flake check` builds every Profile for the host system and

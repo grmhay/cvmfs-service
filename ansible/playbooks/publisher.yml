@@ -1,11 +1,33 @@
 ---
 # The Publisher is also a union-mode client of its own repository, which is
 # how Phase 1 is verified before any other host mounts it.
+#
+# Order matters on a fresh host, so the role runs in two parts:
+#   1. cvmfs_publisher/repository: mkfs (once), the master-key guard, then
+#      fetch the new public key to roles/cvmfs_client/files/
+#   2. cvmfs_client + nix_union_store: ship that key, mount, union store
+#   3. cvmfs_publisher/publishing: builders, clone, reconciler and timers
+# A re-run does the same steps in the same order; each one is idempotent.
+# First run, then masterkey-escrow, then re-run: docs/runbooks/publisher-bootstrap.md.
 - name: Publisher (Stratum 0)
   hosts: nix_publisher
-  roles:
-    - role: cvmfs_client
+  tasks:
+    - name: Repository (mkfs, master-key guard, public key)
+      ansible.builtin.import_role:
+        name: cvmfs_publisher
+        tasks_from: repository
+
+    - name: Client mount of the repository
+      ansible.builtin.import_role:
+        name: cvmfs_client
       vars: { cvmfs_quota_limit_mb: 50000 }
-    - role: nix_union_store
+
+    - name: Union store
+      ansible.builtin.import_role:
+        name: nix_union_store
       vars: { nix_group: builder, nix_channel: canary }
-    - role: cvmfs_publisher
+
+    - name: Publishing (builders, reconciler, resign and publish timers)
+      ansible.builtin.import_role:
+        name: cvmfs_publisher
+        tasks_from: publishing

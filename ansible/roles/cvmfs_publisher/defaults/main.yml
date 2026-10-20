@@ -36,3 +36,10 @@ nix_remote_builders:
 nix_builder_user: nixbuild
 
 cvmfs_release_deb: https://ecsft.cern.ch/dist/cvmfs/cvmfs-release/cvmfs-release-latest_all.deb
+
+# The master key may be on the Publisher only during a resign. mkfs leaves it
+# here; publish/masterkey-escrow.sh moves it into secrets/masterkey.enc.yaml.
+# Any run after the first fails while it is present, unless this is true
+# (tasks/masterkey_guard.yml, docs/runbooks/publisher-bootstrap.md).
+publisher_masterkey_path: "/etc/cvmfs/keys/{{ cvmfs_repository }}.masterkey"
+publisher_allow_masterkey: false

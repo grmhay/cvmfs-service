@@ -1,0 +1,138 @@
+---
+# Early part of the Publisher, run BEFORE cvmfs_client and nix_union_store
+# (playbooks/publisher.yml): packages -> secrets -> publisher user -> local DNS
+# cache -> repository (mkfs once) -> master-key guard -> server.conf -> fetch
+# the public key. cvmfs_client ships that key, so on a fresh Publisher it has
+# to exist before the client mount; on a re-run every step here is a no-op.
+
+- name: Install the cernvm release package
+  become: true
+  ansible.builtin.apt:
+    deb: "{{ cvmfs_release_deb }}"
+
+- name: Install the server tools
+  become: true
+  ansible.builtin.apt:
+    # No apache2: with an S3 upstream, mkfs, publish and the mount work without
+    # it (spike S3), and it would hold port 80 if the Cache shares the host.
+    name: [cvmfs, cvmfs-server, git, sqlite3]
+    state: present
+    update_cache: true
+
+- name: Decrypt publisher secrets (control node)
+  delegate_to: localhost
+  become: false
+  run_once: true
+  ansible.builtin.command: "sops --decrypt {{ publisher_secrets_file }}"
+  register: _secrets_raw
+  changed_when: false
+  no_log: true
+
+- name: Parse secrets
+  ansible.builtin.set_fact:
+    publisher_secrets: "{{ _secrets_raw.stdout | from_yaml }}"
+  no_log: true
+
+- name: Publisher user
+  become: true
+  ansible.builtin.user:
+    name: "{{ publisher_user }}"
+    home: "{{ publisher_home }}"
+    shell: /bin/bash
+    create_home: true
+
+
+# Local DNS cache before anything talks to the Origin: a publish looks up
+# minio.hayweb.org once per S3 request, and the LAN resolvers answer REFUSED
+# once a client passes their per-client rate limit (spike S3, "Open: the
+# resolver refuses the Publisher"). systemd-resolved caches for the record's
+# TTL (300 s / 3600 s today) and forwards to the same upstreams.
+# Config first, so the daemon starts with the right upstreams when the
+# package's postinst points /etc/resolv.conf at the stub.
+- name: Local DNS cache config dir
+  become: true
+  ansible.builtin.file:
+    path: /etc/systemd/resolved.conf.d
+    state: directory
+    mode: "0755"
+
+- name: Local DNS cache config
+  become: true
+  ansible.builtin.template:
+    src: resolved.conf.j2
+    dest: /etc/systemd/resolved.conf.d/cvmfs-publisher.conf
+    mode: "0644"
+  notify: Restart systemd-resolved
+
+- name: Install the local DNS cache
+  become: true
+  ansible.builtin.apt:
+    name: [systemd-resolved, bind9-dnsutils]
+    state: present
+
+- name: Local DNS cache on
+  become: true
+  ansible.builtin.systemd:
+    name: systemd-resolved.service
+    enabled: true
+    state: started
+
+- name: Resolv.conf points at the local stub
+  become: true
+  ansible.builtin.file:
+    path: /etc/resolv.conf
+    src: /run/systemd/resolve/stub-resolv.conf
+    state: link
+    force: true
+
+- name: Apply the local DNS cache config
+  ansible.builtin.meta: flush_handlers
+
+- name: Verify the local DNS cache answers for the Origin
+  ansible.builtin.command: "dig +short +time=2 +tries=1 {{ publisher_dns_probe }} @127.0.0.53"
+  register: _dns_probe
+  changed_when: false
+  failed_when: >-
+    _dns_probe.rc != 0 or
+    (_dns_probe.stdout_lines | select('match', '^[0-9.]+$') | list | length == 0)
+
+- name: S3 backend config
+  become: true
+  ansible.builtin.template:
+    src: s3.conf.j2
+    dest: /etc/cvmfs/s3.conf
+    mode: "0600"
+  no_log: true
+
+- name: Create the repository (once; never re-run against a populated bucket)
+  become: true
+  ansible.builtin.command: >
+    cvmfs_server mkfs -s /etc/cvmfs/s3.conf -w {{ cvmfs_stratum0_url }}
+    -o {{ publisher_user }} {{ cvmfs_repository }}
+  args:
+    creates: "/etc/cvmfs/repositories.d/{{ cvmfs_repository }}"
+  register: _mkfs
+
+- name: Master key guard
+  ansible.builtin.import_tasks: masterkey_guard.yml
+
+- name: Repository TTL
+  become: true
+  ansible.builtin.lineinfile:
+    path: "/etc/cvmfs/repositories.d/{{ cvmfs_repository }}/server.conf"
+    regexp: "^CVMFS_REPOSITORY_TTL="
+    line: "CVMFS_REPOSITORY_TTL={{ cvmfs_repository_ttl }}"
+
+- name: Explicit nested catalogs only
+  become: true
+  ansible.builtin.lineinfile:
+    path: "/etc/cvmfs/repositories.d/{{ cvmfs_repository }}/server.conf"
+    regexp: "^CVMFS_AUTOCATALOGS="
+    line: "CVMFS_AUTOCATALOGS=false"
+
+- name: Fetch the public key back to the control node for the client role
+  become: true
+  ansible.builtin.fetch:
+    src: "/etc/cvmfs/keys/{{ cvmfs_repository }}.pub"
+    dest: "{{ playbook_dir }}/../roles/cvmfs_client/files/{{ cvmfs_repository }}.pub"
+    flat: true
