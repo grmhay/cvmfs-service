@@ -1,6 +1,6 @@
 # Handover
 
-State of the work as of **2026-10-19**. Design: `plans/0001-nix-over-cvmfs.md`; vocabulary: `CONTEXT.md`.
+State of the work as of **2026-10-20**. Design: `plans/0001-nix-over-cvmfs.md`; vocabulary: `CONTEXT.md`.
 
 Phase 0 (prerequisites and spikes) is done apart from one deferred check. All four long-lived VMs
 now exist. **Phase 1 (the Origin) is ready to run once grmhay/ansible-lab-config#113 lands**: the
@@ -31,8 +31,9 @@ inventory. Once #113 lands, set the NetBox device roles (`nix_publisher` on publ
 cache1), the custom fields and the `pi5`/`pi6`/`pi7` tags from #5's table, then remove `blocked` from #5
 and close it.
 
-**Collection tag:** #113 pins this repo at `v0.1.0`, which predates everything below. A new tag is
-needed before the playbook runs through the collection (ask the user; tagging is outward-facing).
+**Collection tag:** `v0.4.0` (2026-10-20) is the latest and includes everything below plus #14's
+`nix_sandbox_fork`. #113 still pins this repo at `v0.1.0`; move that pin to `v0.4.0` before the playbook
+runs through the collection.
 
 Fixed on master on 2026-10-19, none of it run on a real host yet:
 
@@ -69,7 +70,7 @@ probe output, and the store migration into the RW Branch.
 `nix_lower_store` moves to the role default (the Repository's `/nix`). The settings for this were passed
 with `-e`. Until NetBox sets `nix_union_sandbox: "true"` and `nix_sandbox_fork: true` for the
 `nix-canary` tag, a role run from the production inventory turns their sandbox back off. The fork stays
-until a pin bump.
+until a pin bump. `nix_sandbox_fork` ships in collection `v0.4.0`; earlier tags lack it.
 
 `nixcanary-rhel1` needs root over SSH: a later `wheel` sudo rule asks the `ansible` user for a password.
 
