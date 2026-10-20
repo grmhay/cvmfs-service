@@ -9,8 +9,15 @@
 #   3. cvmfs_publisher/publishing: builders, clone, reconciler and timers
 # A re-run does the same steps in the same order; each one is idempotent.
 # First run, then masterkey-escrow, then re-run: docs/runbooks/publisher-bootstrap.md.
+#
+# The client view is mounted at /cvmfs-client/<repo>, not /cvmfs/<repo>:
+# cvmfs_server owns /cvmfs/<repo> here (the transaction overlay), and during a
+# transaction it shows unpublished paths. The client view reads through the
+# Cache like every other host, and the Union Store is built on it (#15, ADR 0004).
 - name: Publisher (Stratum 0)
   hosts: nix_publisher
+  vars:
+    cvmfs_client_mountpoint: "/cvmfs-client/{{ cvmfs_repository }}"
   tasks:
     - name: Repository (mkfs, master-key guard, public key)
       ansible.builtin.import_role:

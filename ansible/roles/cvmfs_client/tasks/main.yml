@@ -56,22 +56,78 @@
   ansible.builtin.command: cvmfs_config setup nouser noautofs
   changed_when: false
 
+# A mountpoint other than /cvmfs/<repo> means a Publisher, where cvmfs_server
+# owns /cvmfs/<repo> (its overlay, and the rdonly cvmfs2 under
+# /var/spool/cvmfs/<repo>). A client cvmfs line on that path would replace or
+# shadow the server's mount at the next boot: refuse to go on (#15, ADR 0004).
+- name: Look for client cvmfs mounts in fstab
+  ansible.builtin.command: findmnt --fstab --noheadings --types cvmfs --output TARGET
+  register: _cvmfs_fstab
+  changed_when: false
+  failed_when: _cvmfs_fstab.rc not in [0, 1]   # 1: no cvmfs lines yet
+  check_mode: false
+  when: cvmfs_client_mountpoint != ("/cvmfs/" ~ cvmfs_repository)
+
+- name: No client cvmfs mount on the server's /cvmfs/<repo>
+  ansible.builtin.assert:
+    that: ("/cvmfs/" ~ cvmfs_repository) not in _cvmfs_fstab.stdout_lines
+    fail_msg: >-
+      /etc/fstab has a client cvmfs mount on /cvmfs/{{ cvmfs_repository }}, which cvmfs_server
+      owns on this host. Remove that line (keep the two "added by CernVM-FS" lines), then re-run.
+      The client view goes on {{ cvmfs_client_mountpoint }}.
+    quiet: true
+  when: cvmfs_client_mountpoint != ("/cvmfs/" ~ cvmfs_repository)
+
 - name: Mount point
   become: true
   ansible.builtin.file:
-    path: "/cvmfs/{{ cvmfs_repository }}"
+    path: "{{ cvmfs_client_mountpoint }}"
     state: directory
     mode: "0755"
 
+# mount.cvmfs takes any mountpoint (CVMFS docs, "Mounting": the fstab sample
+# mounts on /mnt/test). It reads /etc/cvmfs (default.local, config.d), so this
+# instance reads through the Cache with its own cache and talk socket under
+# cvmfs_cache_base. The Publisher's rdonly instance is mounted with
+# config=<repositories.d>/client.conf and reads only that file.
 - name: Static fstab mount of the repository
   become: true
   ansible.posix.mount:
     src: "{{ cvmfs_repository }}"
-    path: "/cvmfs/{{ cvmfs_repository }}"
+    path: "{{ cvmfs_client_mountpoint }}"
     fstype: cvmfs
     opts: defaults,_netdev
     state: mounted
 
-- name: Probe the repository
+# cvmfs_config probe looks only at CVMFS_MOUNT_DIR/<repo>, and CVMFS_MOUNT_DIR
+# "cannot be overwritten" (CVMFS client parameters), so it can only probe the
+# default path. cvmfs_talk -i finds the instance by its config, wherever it is
+# mounted, and never reaches the server's rdonly instance (its socket is
+# CVMFS_TALK_SOCKET in client.conf).
+- name: Probe the repository (default mountpoint)
   ansible.builtin.command: "cvmfs_config probe {{ cvmfs_repository }}"
   changed_when: false
+  when: cvmfs_client_mountpoint == ("/cvmfs/" ~ cvmfs_repository)
+
+- name: Probe the client view
+  become: true
+  ansible.builtin.shell: |
+    set -euo pipefail
+    ls {{ cvmfs_client_mountpoint | quote }} > /dev/null
+    test "$(findmnt --noheadings --output SOURCE --mountpoint {{ cvmfs_client_mountpoint | quote }})" = cvmfs2
+    test "$(cvmfs_talk -i {{ cvmfs_repository | quote }} mountpoint)" = {{ cvmfs_client_mountpoint | quote }}
+    cvmfs_talk -i {{ cvmfs_repository | quote }} host info
+  args:
+    executable: /bin/bash
+  register: _cvmfs_host_info
+  changed_when: false
+
+- name: The client view reads through the Cache
+  vars:
+    _urls: "{{ cvmfs_server_urls | map('replace', '@fqrn@', cvmfs_repository) | list }}"
+    _active: "{{ _cvmfs_host_info.stdout_lines | select('match', '^Active host ') | map('regex_replace', '^Active host [0-9]+: ', '') | list }}"
+  ansible.builtin.assert:
+    that: _active | length == 1 and _active[0] in _urls
+    fail_msg: "{{ cvmfs_client_mountpoint }} reads from {{ _active }}, not from {{ _urls }}"
+    quiet: true
+  when: not ansible_check_mode

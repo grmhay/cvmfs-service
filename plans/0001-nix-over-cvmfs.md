@@ -167,7 +167,7 @@ static fstab mount `nix.hayweb.org /cvmfs/nix.hayweb.org cvmfs defaults,_netdev 
 
 ## Verification
 - Origin: `cvmfs_server check nix.hayweb.org` clean; `curl -I http://cache1.hayweb.org/cvmfs/nix.hayweb.org/.cvmfspublished` → 200; `verify-origin` green.
-- Client: `cvmfs_config probe` OK; `mount | grep /nix/store` is `fuse.mergerfs`; `nix store info` reports the overlay store; `ls /nix/store | wc -l` small on a fresh VM; `du -sh /var/lib/cvmfs` stays ≤ quota after exercising > quota of closures.
+- Client: `cvmfs_config probe` OK (on the Publisher, `cvmfs_talk -i nix.hayweb.org mountpoint` is `/cvmfs-client/nix.hayweb.org`, ADR 0004); `mount | grep /nix/store` is `fuse.mergerfs`; `nix store info` reports the overlay store; `ls /nix/store | wc -l` small on a fresh VM; `du -sh /var/lib/cvmfs` stays ≤ quota after exercising > quota of closures.
 - On-demand + atomic update: publish a new `base`; within ~5 min `readlink /cvmfs/…/profiles/canary/base/<system>` changes on canaries and the new binary runs **without remount or restart**; `stable` hosts unchanged until `promote`.
 - Revision flip under load (S2 + canary soak): a long-running process from the old profile keeps running; new lookups resolve; no ESTALE/ENOENT in `dmesg`/app logs.
 - Local Nix: `nix shell nixpkgs#hello -c hello`; path lands in `/nix/.rw-store/store`; `nix-collect-garbage -d` removes it and nothing from CVMFS.

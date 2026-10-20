@@ -1,12 +1,12 @@
 [Unit]
 Description=Install the Group Profile from the CVMFS binary cache (cache mode)
-RequiresMountsFor=/cvmfs/{{ cvmfs_repository }}
+RequiresMountsFor={{ cvmfs_client_mountpoint }}
 After=nix-daemon.socket
 
 [Service]
 Type=oneshot
 Environment=PATH=/nix/var/nix/profiles/default/bin:/usr/bin:/bin
 ExecStart=/bin/bash -c '\
-  target="$(readlink /cvmfs/{{ cvmfs_repository }}/profiles/{{ nix_channel }}/{{ nix_group }}/{{ nix_system }})" && \
-  nix copy --from file:///cvmfs/{{ cvmfs_repository }}/cache --no-check-sigs "$target" && \
+  target="$(readlink {{ cvmfs_client_mountpoint }}/profiles/{{ nix_channel }}/{{ nix_group }}/{{ nix_system }})" && \
+  nix copy --from file://{{ cvmfs_client_mountpoint }}/cache --no-check-sigs "$target" && \
   nix-env --profile /nix/var/nix/profiles/fleet --set "$target"'
