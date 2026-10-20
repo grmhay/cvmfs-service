@@ -13,3 +13,12 @@ The skills speak in terms of five canonical triage roles. This file maps those r
 When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the corresponding label string from this table.
 
 Edit the right-hand column to match whatever vocabulary you actually use.
+
+## Flag: `blocked`
+
+`blocked` is a flag that sits alongside the state label, not a sixth state. An issue keeps its state label (usually `ready-for-agent` or `ready-for-human`) and also gets `blocked` while it waits on something outside this repo, such as another repo's issue or an upstream release.
+
+- Add `blocked` only when the issue body or latest comment names the blocker, with a link where one exists.
+- Remove it once the blocker clears. The issue keeps its state label, so it does not need re-triage.
+- Agents looking for work skip `ready-for-agent` issues that also carry `blocked`.
+- A wait that the maintainer chose, such as a check deliberately deferred, is not `blocked`.
