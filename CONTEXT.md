@@ -27,7 +27,8 @@ _Avoid_: proxy, stratum 1, mirror
 
 **Lower Store**:
 `/cvmfs/nix.hayweb.org/nix` — a complete read-only Nix store (`store/` + `var/nix/db`) inside the
-Repository. The RO branch of every host's Union Store.
+Repository. The RO branch of every host's Union Store. On the Publisher, the Union Store reads it at
+`/cvmfs-client/nix.hayweb.org/nix`, because `/cvmfs/nix.hayweb.org` is the transaction mount there (ADR 0004).
 _Avoid_: remote store, shared store, the CVMFS store
 
 **Union Store**:

@@ -22,7 +22,7 @@ sandbox = false
 {% elif cvmfs_nix_mode == "cache" %}
 experimental-features = nix-command flakes
 # The Repository's binary cache first (local, on-demand through CVMFS), then upstream.
-substituters = file:///cvmfs/{{ cvmfs_repository }}/cache https://cache.nixos.org
+substituters = file://{{ cvmfs_client_mountpoint }}/cache https://cache.nixos.org
 require-sigs = false
 {% else %}
 experimental-features = nix-command flakes

@@ -19,8 +19,9 @@ All commands run from the checkout root inside a `nix develop` shell on the work
 
 1. `cvmfs_publisher` (tasks `repository`): runs mkfs once and fetches the new public key to
    `ansible/roles/cvmfs_client/files/nix.hayweb.org.pub`.
-2. `cvmfs_client` and `nix_union_store`: ship that key, mount the repository and assemble the
-   union store.
+2. `cvmfs_client` and `nix_union_store`: ship that key, mount the client view of the repository at
+   `/cvmfs-client/nix.hayweb.org` (through the Cache), and assemble the union store on it. mkfs
+   owns `/cvmfs/nix.hayweb.org` here, and the client mount leaves it alone (ADR 0004).
 3. `cvmfs_publisher` (tasks `publishing`): sets up the builders and the clone, then installs the
    resign and publish timers.
 
@@ -65,3 +66,23 @@ playbook then.
 
 The repository exists, so the next run will not repeat mkfs, and the guard will stop it. Do step 2,
 then re-run.
+
+## The two mounts of the repository
+
+After the first run the Publisher has two mounts of `nix.hayweb.org`:
+
+```sh
+findmnt /cvmfs/nix.hayweb.org                # overlay_nix.hayweb.org: cvmfs_server's, for transactions
+findmnt /cvmfs-client/nix.hayweb.org         # cvmfs2: the client view, the union store's Lower Store
+sudo cvmfs_talk -i nix.hayweb.org host info  # client view: active host is cache1
+```
+
+`cvmfs_config probe` checks only `/cvmfs/nix.hayweb.org`, so it reports "Failed!" on the Publisher.
+That is expected: that path is the server's overlay. The role probes the client view with
+`cvmfs_talk` instead (ADR 0004).
+
+If a run stops at "No client cvmfs mount on the server's /cvmfs/<repo>", an `/etc/fstab` line of
+type `cvmfs` targets `/cvmfs/nix.hayweb.org`. An older `cvmfs_client` wrote it. Delete that line,
+but keep the two lines marked `# added by CernVM-FS for nix.hayweb.org`. If `findmnt
+/cvmfs/nix.hayweb.org` shows `cvmfs2`, run `sudo umount /cvmfs/nix.hayweb.org`. Then run
+`sudo cvmfs_server mount nix.hayweb.org` and re-run the playbook.

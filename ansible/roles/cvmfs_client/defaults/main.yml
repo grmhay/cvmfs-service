@@ -2,6 +2,12 @@
 # cvmfs_client: install the CernVM-FS client and statically mount the Repository.
 cvmfs_repository: nix.hayweb.org
 
+# Where this host mounts its client view of the Repository: the CVMFS default
+# for every fleet host. publisher.yml moves it on the Publisher, where
+# cvmfs_server owns /cvmfs/<repo> (#15, ADR 0004). A playbook property, not a
+# host fact. nix_union_store reads the same variable.
+cvmfs_client_mountpoint: "/cvmfs/{{ cvmfs_repository }}"
+
 # Clients read through the Cache (nginx reverse cache), never the bucket.
 # Several URLs = failover order. Cloud hosts use the same list over OpenVPN (Q5b).
 cvmfs_server_urls:

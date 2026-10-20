@@ -17,8 +17,8 @@
 - name: Bind the Lower Store read-only onto /nix/store
   become: true
   ansible.posix.mount:
-    src: "/cvmfs/{{ cvmfs_repository }}/nix/store"
+    src: "{{ cvmfs_client_mountpoint }}/nix/store"
     path: /nix/store
     fstype: none
-    opts: bind,ro,_netdev,x-systemd.requires-mounts-for=/cvmfs/{{ cvmfs_repository }}
+    opts: bind,ro,_netdev,x-systemd.requires-mounts-for={{ cvmfs_client_mountpoint }}
     state: mounted
