@@ -19,8 +19,17 @@ cvmfs_http_proxy: DIRECT
 cvmfs_quota_limit_mb: 20000
 cvmfs_cache_base: /var/lib/cvmfs
 
-# Public key committed at files/nix.hayweb.org.pub (not a secret).
+# The Repository public key (not a secret): committed in cvmfs-service at
+# ansible/roles/cvmfs_client/files/nix.hayweb.org.pub, so it ships inside the
+# collection. A missing key fails the run early (tasks/public_key.yml); how it
+# gets committed: docs/runbooks/publisher-bootstrap.md.
 cvmfs_public_key_file: nix.hayweb.org.pub
+
+# true only on the Publisher (publisher.yml): use the key mkfs left in
+# /etc/cvmfs/keys there instead of shipping the committed one, and fail if the
+# two differ. Lets the Publisher's first run work before the key is committed.
+# A playbook property, not a host fact.
+cvmfs_public_key_from_host: false
 
 # Release packages (spike S1 confirms URLs; override if cernvm moves them).
 cvmfs_release_deb: https://ecsft.cern.ch/dist/cvmfs/cvmfs-release/cvmfs-release-latest_all.deb

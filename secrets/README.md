@@ -27,4 +27,5 @@ masterkey: |
 ```
 
 The repository **public key** (`nix.hayweb.org.pub`) is not a secret: it is committed at
-`ansible/roles/cvmfs_client/files/nix.hayweb.org.pub` and shipped to every host.
+`ansible/roles/cvmfs_client/files/nix.hayweb.org.pub`, ships inside the collection, and is shipped to
+every host. The Publisher's run prints it after mkfs (docs/runbooks/publisher-bootstrap.md).

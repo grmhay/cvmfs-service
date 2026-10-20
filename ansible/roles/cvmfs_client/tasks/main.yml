@@ -33,13 +33,8 @@
     mode: "0644"
   notify: Reload cvmfs
 
-- name: Ship the repository public key
-  become: true
-  ansible.builtin.copy:
-    src: "{{ cvmfs_public_key_file }}"
-    dest: "/etc/cvmfs/keys/{{ cvmfs_repository }}.pub"
-    mode: "0644"
-  notify: Reload cvmfs
+- name: Repository public key (ship the committed one, or verify the Publisher's)
+  ansible.builtin.import_tasks: public_key.yml
 
 - name: Write the repository config
   become: true

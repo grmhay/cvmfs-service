@@ -1,9 +1,10 @@
 ---
 # Early part of the Publisher, run BEFORE cvmfs_client and nix_union_store
 # (playbooks/publisher.yml): packages -> secrets -> publisher user -> local DNS
-# cache -> repository (mkfs once) -> master-key guard -> server.conf -> fetch
-# the public key. cvmfs_client ships that key, so on a fresh Publisher it has
-# to exist before the client mount; on a re-run every step here is a no-op.
+# cache -> repository (mkfs once) -> master-key guard -> server.conf -> show
+# the public key. On the Publisher, cvmfs_client uses the key mkfs left here
+# (cvmfs_public_key_from_host), so mkfs has to come before the client mount;
+# on a re-run every step here is a no-op.
 
 - name: Install the cernvm release package
   become: true
@@ -130,9 +131,5 @@
     regexp: "^CVMFS_AUTOCATALOGS="
     line: "CVMFS_AUTOCATALOGS=false"
 
-- name: Fetch the public key back to the control node for the client role
-  become: true
-  ansible.builtin.fetch:
-    src: "/etc/cvmfs/keys/{{ cvmfs_repository }}.pub"
-    dest: "{{ playbook_dir }}/../roles/cvmfs_client/files/{{ cvmfs_repository }}.pub"
-    flat: true
+- name: Public key (show it; copy it to the control node if asked)
+  ansible.builtin.import_tasks: public_key.yml

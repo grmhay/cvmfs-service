@@ -1,0 +1,29 @@
+---
+# After mkfs: make the Repository public key easy to capture wherever the play
+# runs (a checkout, or the vendored collection under Semaphore, #17). It is
+# not a secret, so the run output carries it. Nothing here writes into the
+# play's own checkout or the collection: an optional copy goes only to a path
+# the operator names (publisher_public_key_fetch_dest). Where it gets
+# committed: cvmfs_client/tasks/public_key.yml, docs/runbooks/publisher-bootstrap.md.
+
+- name: Read the repository public key
+  become: true
+  ansible.builtin.slurp:
+    src: "/etc/cvmfs/keys/{{ cvmfs_repository }}.pub"
+  register: _publisher_pubkey
+
+- name: Show the repository public key
+  ansible.builtin.debug:
+    msg:
+      - "Public key of {{ cvmfs_repository }} (/etc/cvmfs/keys/{{ cvmfs_repository }}.pub on {{ inventory_hostname }})"
+      - "sha256 {{ _publisher_pubkey.content | b64decode | hash('sha256') }}"
+      - "Commit it to cvmfs-service at ansible/roles/cvmfs_client/files/{{ cvmfs_repository }}.pub (docs/runbooks/publisher-bootstrap.md):"
+      - "{{ (_publisher_pubkey.content | b64decode).splitlines() }}"
+
+- name: Copy the repository public key to the control node (publisher_public_key_fetch_dest)
+  become: true
+  ansible.builtin.fetch:
+    src: "/etc/cvmfs/keys/{{ cvmfs_repository }}.pub"
+    dest: "{{ publisher_public_key_fetch_dest }}"
+    flat: true
+  when: publisher_public_key_fetch_dest | length > 0

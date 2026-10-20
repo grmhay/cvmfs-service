@@ -39,7 +39,7 @@ Fixed on master on 2026-10-19, none of it run on a real host yet:
 - **Resolver rate limit** (1fadef6): `cvmfs_publisher` installs a local caching systemd-resolved stub
   forwarding to `publisher_dns_upstreams`, no public fallback, with a dig check through the stub. On the
   first publish and `cvmfs_server check`, confirm no `REFUSED` (S3 doc, "Resolver rate limit").
-- **Order + master key** (d03e127): the repository part (mkfs, `.pub` fetch) runs before `cvmfs_client`
+- **Order + master key** (d03e127): the repository part (mkfs, public key) runs before `cvmfs_client`
   and `nix_union_store`; the publishing part comes last. A guard fails the play if
   `/etc/cvmfs/keys/<repo>.masterkey` is still on the Publisher (except on the mkfs run, or with
   `publisher_allow_masterkey: true` during `resign`). `nix run .#masterkey-escrow` streams it into
@@ -51,9 +51,13 @@ Fixed on master on 2026-10-19, none of it run on a real host yet:
   host on the first run after this lands.
 - **Empty repository** (#16): `publisher.yml` sets `nix_union_defer_until_published`, so the first runs
   leave `/nix/store` plain until a publish creates the Lower Store. Everywhere else an empty repository fails.
+- **Public key home** (#17): the run no longer fetches `.pub` into the play's checkout (lost under
+  Semaphore). The Publisher prints it with its sha256 after mkfs and verifies its own copy
+  (`cvmfs_public_key_from_host`); the operator commits it at `ansible/roles/cvmfs_client/files/` and
+  tags a release, and every other client fails early without it.
 
 The sequence is `docs/runbooks/publisher-bootstrap.md`: playbook → `masterkey-escrow` + commit the
-secret and `.pub` → re-run → first publish by hand (`sudo systemctl start cvmfs-publish.service`) →
+secret and the printed `.pub` → tag + re-vendor → re-run → first publish by hand (`sudo systemctl start cvmfs-publish.service`) →
 wait out the TTL → re-run to assemble the union. Watch on that run: the two mounts across a reboot,
 `cvmfs_server transaction`/`publish` with the second client instance up, the `findmnt`/`cvmfs_talk`
 probe output, and the store migration into the RW Branch.

@@ -7,7 +7,9 @@ belong. Before you start, the Origin bucket must be verified (server/minio/RUNBO
 `secrets/publisher.enc.yaml` must hold the MinIO keys, the builder key and the deploy key
 (secrets/README.md).
 
-All commands run from the checkout root inside a `nix develop` shell on the workstation.
+All commands run from the checkout root inside a `nix develop` shell on the workstation. The
+playbook steps can also run as Semaphore template 7 (`cvmfs: publisher`) from the collection that
+ansible-lab-config vendors; see [Under Semaphore](#under-semaphore).
 
 ## 1. Playbook (creates the repository)
 
@@ -17,10 +19,15 @@ All commands run from the checkout root inside a `nix develop` shell on the work
 
 `publisher.yml` runs in this order:
 
-1. `cvmfs_publisher` (tasks `repository`): runs mkfs once and fetches the new public key to
-   `ansible/roles/cvmfs_client/files/nix.hayweb.org.pub`.
-2. `cvmfs_client` and `nix_union_store`: ship that key and mount the client view of the repository
-   at `/cvmfs-client/nix.hayweb.org` (through the Cache). mkfs owns `/cvmfs/nix.hayweb.org` here,
+1. `cvmfs_publisher` (tasks `repository`): runs mkfs once, then prints the new public key and its
+   sha256 under "Show the repository public key". It writes nothing into the checkout or the
+   collection. To also get the key as a file on the control node, pass
+   `-e publisher_public_key_fetch_dest=<path>` (step 2).
+2. `cvmfs_client` and `nix_union_store`: on the Publisher, `cvmfs_client` uses the key mkfs left in
+   `/etc/cvmfs/keys` (`cvmfs_public_key_from_host`, set only by `publisher.yml`) instead of shipping
+   the committed one. If a committed key exists and differs, the run fails (see
+   [The public key](#the-public-key)). If none is committed yet, it prints a reminder and goes on.
+   Then it mounts the client view of the repository at `/cvmfs-client/nix.hayweb.org` (through the Cache). mkfs owns `/cvmfs/nix.hayweb.org` here,
    and the client mount leaves it alone (ADR 0004). The repository is still empty: it has no Lower
    Store until the first publish (step 4). So the union store is not assembled yet, and the run
    prints "Union deferred until the first publish". `/nix/store` stays the installer's plain local
@@ -51,12 +58,22 @@ If it stops partway, you can safely run it again. If the secret already exists, 
 checks it and then removes the key. If the secret was made from a different key, the script refuses
 and leaves both the key and the secret alone.
 
-Then commit the two new files:
+Then put the public key at its home and commit both files. Take the key from the run output, or
+fetch it from the Publisher:
 
 ```sh
+ssh publisher cat /etc/cvmfs/keys/nix.hayweb.org.pub > ansible/roles/cvmfs_client/files/nix.hayweb.org.pub
+sha256sum ansible/roles/cvmfs_client/files/nix.hayweb.org.pub   # = the sha256 the run printed
 git add secrets/masterkey.enc.yaml ansible/roles/cvmfs_client/files/nix.hayweb.org.pub
 git commit -m "Escrow the nix.hayweb.org master key; commit its public key"
 ```
+
+From a checkout, step 1 can write the file for you: run it from `ansible/` with
+`-e publisher_public_key_fetch_dest=$PWD/roles/cvmfs_client/files/nix.hayweb.org.pub`. Never point
+it into a vendored copy of the collection: the next re-vendor wipes it.
+
+Fleet hosts read the key from the collection, so they get it only from a release: see
+[The public key](#the-public-key).
 
 ## 3. Re-run the playbook
 
@@ -96,6 +113,42 @@ as on any fleet host:
 
 If it still prints "Union deferred", the client view has not seen the publish yet: wait for the TTL
 and run it again.
+
+## The public key
+
+Its one home is `ansible/roles/cvmfs_client/files/nix.hayweb.org.pub` in this repo. That path ships
+inside the collection `grmhay.cvmfs_service`, so a checkout and the vendored collection read the same
+file. On every host but the Publisher, `cvmfs_client` ships it to `/etc/cvmfs/keys/`. Without it, the
+run stops at "The committed repository public key is there", before any copy, and names the fix.
+
+After the key is committed, fleet hosts (templates 8–10, or `clients.yml`/`builders.yml` run from
+elsewhere) need a release that contains it:
+
+1. Bump `version:` in `ansible/galaxy.yml`, commit, and tag that commit `v<version>`. Push both.
+2. In ansible-lab-config, bump the cvmfs-service pin in `buildhost-all/requirements.yml` to that
+   tag, re-vendor and commit (its docs/cvmfs_service_jobs.md, "Rolling the fleet to a new
+   cvmfs-service release").
+
+On the Publisher, every run compares the committed key with `/etc/cvmfs/keys/nix.hayweb.org.pub`.
+A mismatch fails at "The Publisher's public key matches the committed one". Either the committed
+key is for another repository, or the repository was re-created (a second mkfs) and every client
+still trusts the old key. Find out which before you change either file.
+
+## Under Semaphore
+
+Template 7 (`cvmfs: publisher`) runs `grmhay.cvmfs_service.publisher` from the collection that
+ansible-lab-config vendors. The runner's checkout is thrown away after the run, so the key comes out
+through the run output:
+
+1. Run template 7 (step 1). A collection pinned before #17 does not print the key; take it from the
+   Publisher instead (`ssh publisher cat /etc/cvmfs/keys/nix.hayweb.org.pub`).
+2. Copy the key and its sha256 from "Show the repository public key" in the task output.
+3. Here: write it to `ansible/roles/cvmfs_client/files/nix.hayweb.org.pub`, check `sha256sum`
+   against the output, and commit it with the escrowed master key (step 2).
+4. Tag a release, then bump the pin and re-vendor in ansible-lab-config ([The public
+   key](#the-public-key)).
+5. Run template 7 again (step 3). It reports "The Publisher's public key matches the committed
+   files/nix.hayweb.org.pub". Templates 8–10 can now ship the key.
 
 ## If the first run fails after mkfs
 

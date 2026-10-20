@@ -1,0 +1,76 @@
+---
+# The Repository public key: the trust root every client needs (#17). Its one
+# durable home is files/<cvmfs_public_key_file> in this role, committed in
+# cvmfs-service, so it ships inside the collection grmhay.cvmfs_service.
+#
+#   fleet host (default): ship the committed key; fail early if it is missing.
+#   Publisher (publisher.yml sets cvmfs_public_key_from_host to true): mkfs
+#     wrote the key on the host. Use that one, so the first run works before
+#     the key is committed, and fail if a committed key differs from it.
+# How the key gets committed: docs/runbooks/publisher-bootstrap.md.
+
+- name: Find the committed repository public key (control node)
+  ansible.builtin.set_fact:
+    # role files/ first; skip: an empty result instead of an error
+    _cvmfs_committed_key: "{{ lookup('ansible.builtin.first_found', cvmfs_public_key_file, skip=true) }}"
+
+- name: The committed repository public key is there
+  ansible.builtin.assert:
+    that: _cvmfs_committed_key | length > 0
+    fail_msg: >-
+      No public key for {{ cvmfs_repository }} in this copy of cvmfs_client
+      (looked for files/{{ cvmfs_public_key_file }}). The Publisher's run prints it after mkfs.
+      Commit it to cvmfs-service at ansible/roles/cvmfs_client/files/{{ cvmfs_public_key_file }},
+      tag a new release, then bump the pin and re-vendor the collection where this play runs
+      from (ansible-lab-config: buildhost-all/requirements.yml). See
+      docs/runbooks/publisher-bootstrap.md in cvmfs-service.
+    quiet: true
+  when: not (cvmfs_public_key_from_host | bool)
+
+- name: Ship the repository public key
+  become: true
+  ansible.builtin.copy:
+    src: "{{ _cvmfs_committed_key }}"
+    dest: "/etc/cvmfs/keys/{{ cvmfs_repository }}.pub"
+    mode: "0644"
+  notify: Reload cvmfs
+  when: not (cvmfs_public_key_from_host | bool)
+
+- name: Read the public key mkfs left on the Publisher
+  become: true
+  ansible.builtin.slurp:
+    src: "/etc/cvmfs/keys/{{ cvmfs_repository }}.pub"
+  register: _cvmfs_host_key
+  failed_when: false
+  when: cvmfs_public_key_from_host | bool
+
+- name: The Publisher has its public key
+  ansible.builtin.assert:
+    that: _cvmfs_host_key.content is defined
+    fail_msg: >-
+      /etc/cvmfs/keys/{{ cvmfs_repository }}.pub is not on this host, and
+      cvmfs_public_key_from_host is true. cvmfs_server mkfs creates it (cvmfs_publisher, tasks
+      repository). Run publisher.yml from the start, or check that this host is the Publisher.
+    quiet: true
+  when: cvmfs_public_key_from_host | bool
+
+- name: The Publisher's public key matches the committed one
+  ansible.builtin.assert:
+    that: (_cvmfs_host_key.content | b64decode | trim) == (lookup('ansible.builtin.file', _cvmfs_committed_key) | trim)
+    fail_msg: >-
+      The committed files/{{ cvmfs_public_key_file }} is not the public key of the Repository on
+      this Publisher (/etc/cvmfs/keys/{{ cvmfs_repository }}.pub). Either the committed key is
+      for another repository, or the Repository was re-created (re-mkfs) and every client now
+      trusts the wrong key. Find out which before going on; do not overwrite either key blindly.
+    success_msg: "The Publisher's public key matches the committed files/{{ cvmfs_public_key_file }}"
+  when: cvmfs_public_key_from_host | bool and _cvmfs_committed_key | length > 0
+
+- name: Remind to commit the public key
+  ansible.builtin.debug:
+    msg: >-
+      The public key of {{ cvmfs_repository }} is not committed yet: this run uses the one mkfs
+      left on the Publisher, but no other host can mount the Repository until it is committed at
+      ansible/roles/cvmfs_client/files/{{ cvmfs_public_key_file }} and released (the key and its
+      sha256 are printed above, under "Show the repository public key";
+      docs/runbooks/publisher-bootstrap.md).
+  when: cvmfs_public_key_from_host | bool and _cvmfs_committed_key | length == 0

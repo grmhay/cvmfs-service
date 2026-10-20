@@ -4,8 +4,10 @@
 #
 # Order matters on a fresh host, so the role runs in two parts:
 #   1. cvmfs_publisher/repository: mkfs (once), the master-key guard, then
-#      fetch the new public key to roles/cvmfs_client/files/
-#   2. cvmfs_client + nix_union_store: ship that key, mount, union store.
+#      print the public key (and its sha256) for the operator to commit
+#   2. cvmfs_client + nix_union_store: verify the key mkfs left on the host
+#      (cvmfs_public_key_from_host) against the committed one, if any, mount,
+#      union store. Other hosts ship the committed key instead (#17).
 #      Until the first publish the Repository has no Lower Store, so the
 #      union waits for it (nix_union_defer_until_published, #16): Nix runs on
 #      its plain local store, which is all the first publish needs
@@ -21,6 +23,8 @@
   hosts: nix_publisher
   vars:
     cvmfs_client_mountpoint: "/cvmfs-client/{{ cvmfs_repository }}"
+    # mkfs wrote the key here: verify it, do not ship the committed copy (#17)
+    cvmfs_public_key_from_host: true
   tasks:
     - name: Repository (mkfs, master-key guard, public key)
       ansible.builtin.import_role:
