@@ -3,9 +3,10 @@
 State of the work as of **2026-10-20**. Design: `plans/0001-nix-over-cvmfs.md`; vocabulary: `CONTEXT.md`.
 
 Phase 0 (prerequisites and spikes) is done apart from one deferred check. All four long-lived VMs
-now exist. **Phase 1 (the Origin) is ready to run once grmhay/ansible-lab-config#113 lands**: the
-Publisher's first-run problems found on 2026-10-19 (#15, #16, the master key, nix.conf) are fixed on
-master, but none of it has run on a real host. #14, the chroot-fix Nix fork on the canaries, is
+exist and #5 is closed. **Phase 1 (the Origin) is ready to run**: NetBox is the inventory source
+(grmhay/ansible-lab-config#113, closed 2026-10-20), and the Publisher's first-run problems found on
+2026-10-19 (#15, #16, the master key, nix.conf) are fixed in collection `v0.4.0`, but none of it has
+run on a real host. ansible-lab-config still pins the collection at `v0.1.0`. #14, the chroot-fix Nix fork on the canaries, is
 done: all three canaries run the fork in union Mode with the sandbox on.
 
 ## Where things stand
@@ -17,23 +18,22 @@ done: all three canaries run the fork in union Mode with the sandbox on.
 | S3 mkfs/publish against MinIO (#3) | done and closed 2026-10-19: `docs/spikes/S3-mkfs-minio.md` |
 | MinIO rename + Let's Encrypt cert (homelab-opscontrolplane#126) | done 2026-10-11; the `truenas-cert-pusher` sidecar in Caddy's stack on skyline renews it |
 | Bucket `cvmfs`, policy, `cvmfs-publisher` account (#4) | done; keys in `secrets/publisher.enc.yaml`. **Open by choice:** the `verify-origin` run from a cloud host over OpenVPN |
-| Long-lived VMs (#5) | all four exist: canaries `nixcanary-deb1` (103), `nixcanary-rhel1` (109); `publisher` (111, 192.168.20.118, 100 GB) and `cache1` (112, 192.168.20.119, 120 GB), created 2026-10-19, verify passed. NetBox fields/tags wait for ansible-lab-config#113 |
+| Long-lived VMs (#5) | done and closed 2026-10-20: canaries `nixcanary-deb1` (103), `nixcanary-rhel1` (109); `publisher` (111, 192.168.20.118, 100 GB) and `cache1` (112, 192.168.20.119, 120 GB). NetBox roles, tags and custom fields set (ansible-lab-config#113) |
 | Publisher first run (#15, #16) | fixed on master, not yet run: see "Next: Phase 1" |
 | Upstream chroot-parent fix (#9) | the user's, by hand. Nothing is filed on NixOS/nix by an agent |
 | Nix sandbox on the union (#6 parent, #13) | fleet-wide: waits for a Nix release with the #9 fix, then a Determinate installer that ships it |
-| Chroot-fix fork on the canaries (#14) | done 2026-10-19: `docs/canary-nix-fork.md`. `pi7`, `nixcanary-deb1` and `nixcanary-rhel1` run `2.30.0+chrootfix` in union Mode over the stand-in Lower Store `/srv/lower`, sandbox on. Their `nix_union_sandbox`/`nix_sandbox_fork` settings still need to go into NetBox (#113) |
+| Chroot-fix fork on the canaries (#14) | done 2026-10-19: `docs/canary-nix-fork.md`. `pi7`, `nixcanary-deb1` and `nixcanary-rhel1` run `2.30.0+chrootfix` in union Mode over the stand-in Lower Store `/srv/lower`, sandbox on. Their `nix_union_sandbox`/`nix_sandbox_fork` settings are not yet in NetBox or the inventory |
 
 ## Next: Phase 1, the Origin (`publisher.yml` on VMID 111)
 
-**Waits on grmhay/ansible-lab-config#113** (NetBox as inventory source). The play targets the group
-`nix_publisher` from the device role, and host facts come from NetBox: do not run it with a hand-made
-inventory. Once #113 lands, set the NetBox device roles (`nix_publisher` on publisher, `nix_cache` on
-cache1), the custom fields and the `pi5`/`pi6`/`pi7` tags from #5's table, then remove `blocked` from #5
-and close it.
+Runs from ansible-lab-config's Semaphore templates (`cvmfs: publisher` / `cache` / `builders` /
+`clients (canaries)`), with NetBox as the inventory (#113 done: `nix_publisher` = publisher,
+`nix_cache` = cache1, `tag_nix_builder` = pi5, pi6, `tag_nix_canary` = the three canaries). Do not run it
+with a hand-made inventory.
 
 **Collection tag:** `v0.4.0` (2026-10-20) is the latest and includes everything below plus #14's
-`nix_sandbox_fork`. #113 still pins this repo at `v0.1.0`; move that pin to `v0.4.0` before the playbook
-runs through the collection.
+`nix_sandbox_fork`. ansible-lab-config still pins this repo at `v0.1.0`; move that pin to `v0.4.0`
+before the first `cvmfs: publisher` run (asked for in the closing comment on #5; no `v0.1.1` is needed).
 
 Fixed on master on 2026-10-19, none of it run on a real host yet:
 
@@ -68,8 +68,9 @@ probe output, and the store migration into the RW Branch.
 `pi7`, `nixcanary-deb1` and `nixcanary-rhel1` now run a Union Store over the stand-in Lower Store at
 `/srv/lower`, because no Repository existed yet. When the Repository is published, their
 `nix_lower_store` moves to the role default (the Repository's `/nix`). The settings for this were passed
-with `-e`. Until NetBox sets `nix_union_sandbox: "true"` and `nix_sandbox_fork: true` for the
-`nix-canary` tag, a role run from the production inventory turns their sandbox back off. The fork stays
+with `-e`. Until NetBox or the inventory's group vars set `nix_union_sandbox: "true"` and
+`nix_sandbox_fork: true` for the `nix-canary` tag, a `clients (canaries)` run turns their sandbox back off.
+#113's custom fields do not include them. The fork stays
 until a pin bump. `nix_sandbox_fork` ships in collection `v0.4.0`; earlier tags lack it.
 
 `nixcanary-rhel1` needs root over SSH: a later `wheel` sudo rule asks the `ansible` user for a password.
@@ -79,7 +80,7 @@ until a pin bump. `nix_sandbox_fork` ships in collection `v0.4.0`; earlier tags 
 - Labels: one category (`enhancement` / `bug`) and one state per issue (`docs/agents/triage-labels.md`).
 - **`blocked`** is a flag next to the state label, not a state: the issue waits on something outside this repo,
   named in its body or latest comment. Agents skip `ready-for-agent` issues that carry it. Remove it when the
-  blocker clears; no re-triage needed. Today it is on #5, #6 and #13.
+  blocker clears; no re-triage needed. Today it is on #6 and #13 (both wait on a Nix release with the #9 fix).
 - Comments posted during triage start with `> *This was generated by AI during triage.*`
 
 ## Template repo (grmhay/pythonproject)
@@ -121,6 +122,10 @@ projects get the loop and the triage labels doc on `copier update`; their `CLAUD
 - Confirm before outward-facing actions (issues, PRs, pushes) unless asked.
 
 ## Other loose ends
+
+- grmhay/packer-service#111 (needs-triage): raise the Debian 13 and RHEL 10 templates' default root disk to
+  100G (amended from 60G on 2026-10-20), so Nix hosts built from them don't fill `/`. Every VM from those
+  templates is then at least 100G; vm-service `--disk` only grows.
 
 - pidns1 and pidns2 report different `hayweb.org` SOA serials: seen 2026-10-16, still different on 2026-10-19
   (1771979346 on 192.168.40.17, 1771807930 on 192.168.50.17). Not investigated.
