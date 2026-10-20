@@ -34,7 +34,7 @@ do_mkfs() {
   curl -fsSLo /tmp/cvmfs-release.deb "$(role_default cvmfs_release_deb)"
   dpkg -i /tmp/cvmfs-release.deb >/dev/null
   apt-get -qq update
-  apt-get -qq install -y cvmfs cvmfs-server apache2 git sqlite3 >/dev/null
+  apt-get -qq install -y cvmfs cvmfs-server git sqlite3 >/dev/null
   echo "      $(cvmfs_server --version 2>/dev/null || dpkg-query -W cvmfs-server)"
 
   step "Nix (the nix_union_store role's pinned installer, upstream Nix)"

@@ -12,13 +12,15 @@
 #   3. flip /cvmfs/<repo>/profiles/canary/<group>/<system> to the new Profile.
 # Nothing is ever deleted from the Repository (retention: never, year one).
 #
-# Env (set by the flake app wrapper): CVMFS_REPOSITORY, FLEET_GROUPS, FLEET_SYSTEMS.
+# Env (set by the flake app wrapper): CVMFS_REPOSITORY, FLEET_GROUPS, FLEET_SYSTEMS,
+# CVMFS_DIRTAB.
 # Usage: publish.sh [--channel canary] [--flake <ref>] [--dry-run]
 set -euo pipefail
 
 repo="${CVMFS_REPOSITORY:?}"
 groups="${FLEET_GROUPS:?}"
 systems="${FLEET_SYSTEMS:?}"
+dirtab="${CVMFS_DIRTAB:?}"
 channel="canary"
 flake="${PUBLISH_FLAKE:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 dry_run=0
@@ -60,6 +62,11 @@ trap 'log "FAILED; aborting transaction"; cvmfs_server abort -f "$repo"' ERR
 # Hardlink optimisation is pointless here (CVMFS dedups by content) and
 # cross-directory hardlinks do not survive publishing.
 nix_opts=(--option auto-optimise-store false --no-check-sigs)
+
+# Nested catalogs, one per store path (server/cvmfs/cvmfsdirtab). Installed in
+# every transaction so the Repository always carries the committed version;
+# CVMFS applies it at publish (spike S3).
+install -m 0644 "$dirtab" "$root/.cvmfsdirtab"
 
 paths=("${outs[@]}")
 log "copying ${#paths[@]} profile closures into the lower store"

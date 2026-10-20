@@ -1,0 +1,15 @@
+---
+# Spike S3: the cvmfs_client role on the second spike VM, reading the spike
+# Repository through the spike VM's nginx (s3-cache.yml). The public key is the
+# spike repository's own, copied off the publisher VM. From ansible/:
+#   ansible-playbook -i <client vm>, -u ansible ../spikes/s3-client.yml \
+#     -e cache_host=<publisher vm> -e cvmfs_public_key_file=/abs/path/spike.hayweb.org.pub
+- name: Client of the spike Repository
+  hosts: all
+  vars:
+    cvmfs_repository: spike.hayweb.org
+    cvmfs_server_urls:
+      - "http://{{ cache_host }}/cvmfs/@fqrn@"
+    cvmfs_quota_limit_mb: 2000
+  roles:
+    - cvmfs_client

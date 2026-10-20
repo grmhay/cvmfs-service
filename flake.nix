@@ -58,6 +58,8 @@
               # The scripts live in the store; the flake to build is the checkout
               # the app is run from (the Publisher's clone, or a dev tree).
               export PUBLISH_FLAKE="''${PUBLISH_FLAKE:-$PWD}"
+              # Pinned with the scripts, not read from the flake being built.
+              export CVMFS_DIRTAB="''${CVMFS_DIRTAB:-${./server/cvmfs/cvmfsdirtab}}"
               exec ${./publish}/${name}.sh "$@"
             '';
           }}/bin/${name}";

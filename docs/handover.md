@@ -1,6 +1,6 @@
 # Handover
 
-State of the work as of **2026-10-16**. On hold until the network fix below lands. Design: `plans/0001-nix-over-cvmfs.md`; vocabulary: `CONTEXT.md`.
+State of the work as of **2026-10-19**. The network blocker (grmhay/ansible-lab-config#116) is fixed and spike S3 has passed. Design: `plans/0001-nix-over-cvmfs.md`; vocabulary: `CONTEXT.md`.
 
 ## Where things stand
 
@@ -12,39 +12,25 @@ Phase 0 (prerequisites and spikes) is nearly done:
 | S2 union store (#2), sandbox groundwork (#6: #7, #8, #10–#12) | done: `docs/spikes/S2-union-store.md`, ADR 0002 |
 | MinIO rename + Let's Encrypt cert (homelab-opscontrolplane#126) | done 2026-10-11; the `truenas-cert-pusher` sidecar in Caddy's stack on skyline renews it |
 | Bucket `cvmfs`, anonymous GetObject policy, `cvmfs-publisher` account (#4) | done; keys in `secrets/publisher.enc.yaml`. **Open:** the `verify-origin` run from a cloud host over OpenVPN (deferred) |
-| S3 mkfs/publish against MinIO (#3) | **blocked** on grmhay/ansible-lab-config#116 |
-| Long-lived VMs: publisher, cache1, canaries (#5) | not started (wait for #116: the Publisher sits on VLAN 20) |
+| S3 mkfs/publish against MinIO (#3) | done 2026-10-19: `docs/spikes/S3-mkfs-minio.md` |
+| Long-lived VMs: publisher, cache1, canaries (#5) | canaries done; publisher and cache1 wait on ansible-lab-config#113. Decide the resolver rate-limit fix (S3 doc, "Open") before the Publisher |
 | Nix sandbox on the union (#13) | waits for an upstream Nix release with the fix (#9, by hand) |
 
-## The blocker: ansible-lab-config#116
+## Spike S3 (#3)
 
-Uploads from VLAN 20 (every vm-service VM, and this workstation) into filer1 (192.168.10.91) crawl at about 15 KB/s with heavy packet loss. `cvmfs_server publish` times out (`503 RequestTimeout`, curl error 65). The same upload from pi7 on VLAN 40 runs at 23 MB/s, and uploads from VLAN 20 to the internet are fast. Measurements, ruled-out causes and a reproduction command are in the issue. The fix is in the network (inter-VLAN routing, or filer1's NIC/switch port), not in this repo.
+Done on 2026-10-19 with fresh VMs `s3-pub` (111) and `s3-client` (112) and a fresh scratch bucket.
+Results and findings are in `docs/spikes/S3-mkfs-minio.md`. The dirtab is now installed by
+`publish/publish.sh`, and `apache2` is gone from `cvmfs_publisher`.
 
-Check it is fixed (from a VLAN 20 host; healthy is well under a second):
+The scratch bucket and both VMs are gone.
 
-```sh
-head -c 3000000 /dev/urandom >/tmp/q3
-curl -s -o /dev/null -H 'Expect:' --max-time 40 --data-binary @/tmp/q3 \
-  -w '%{http_code} %{time_total}s\n' https://minio.hayweb.org:9000/cvmfs/x
-```
+One open finding: the resolvers refuse the Publisher after a burst of lookups, which looks like a
+rate limit. Pick a fix before #5 builds the Publisher.
 
-## Resuming spike S3 (#3)
-
-The spike VMs were destroyed on 2026-10-16. Progress, findings and what is still open are in `docs/spikes/S3-mkfs-minio.md`; the role fixes are already on master (644c0d8).
-
-1. If they still exist, delete the old scratch bucket and its orphaned account by hand: `spikes/s3-scratch-bucket.sh delete filer1 admin`. Its keys were only on the destroyed VM.
-2. Create two Debian 13 VMs with vm-service, one at a time, using `--no-backup --ssh-keys "$(cat ~/.ssh/id_ed25519.pub)"` (log in as `ansible@`).
-3. By hand: `spikes/s3-scratch-bucket.sh create filer1 admin ansible@<publisher vm>`. Set the `mc alias` in the same shell first.
-4. Copy the repo to the VM (no rsync on the template; use `tar | ssh`), then:
-   - `sudo spikes/s3-publish.sh mkfs`
-   - nginx: from `ansible/`, `ansible-playbook -i <vm>, -u ansible ../spikes/s3-cache.yml`. Disable `apache2` first: it holds port 80 on a shared host.
-   - `sudo spikes/s3-publish.sh publish`, then `check`
-   - a second VM with `cvmfs_client` pointed at the first VM's nginx
-   - `rmfs`, then delete the scratch bucket.
-5. Fold in what is still open: install `server/cvmfs/cvmfsdirtab` in `publish/publish.sh` once nested catalogs are shown, and decide whether `apache2` stays in `cvmfs_publisher`.
-
-Lessons from the first attempt:
-- mkfs needs an **empty** bucket, and the Cache must not hold copies from an earlier attempt. To start over, empty the bucket (the scratch key may list and delete) and the nginx cache dir.
+Lessons for the next spike on a fresh vm-service VM:
+- vm-service's first-boot Ansible run keeps going after `create-vm` returns. Wait for it before using apt.
+- A re-created VM keeps its old name, so remove the stale `known_hosts` entry.
+- mkfs needs an **empty** bucket, and the Cache must not hold copies from an earlier attempt.
 - `-w` is the bucket, never the Cache.
 
 ## Standing rules

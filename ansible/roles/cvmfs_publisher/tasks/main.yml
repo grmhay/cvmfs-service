@@ -1,6 +1,7 @@
 ---
 # Order: packages -> publisher user + secrets -> Nix with remote builders ->
-# repository (mkfs once) -> dirtab/TTL -> resign timer -> publish reconciler.
+# repository (mkfs once) -> TTL -> resign timer -> publish reconciler.
+# The dirtab is installed by publish/publish.sh in every transaction.
 # nix_union_store runs first in the playbook so the Publisher is itself a
 # union-mode client of its own repository (verification, Phase 1).
 
@@ -12,7 +13,9 @@
 - name: Install the server tools
   become: true
   ansible.builtin.apt:
-    name: [cvmfs, cvmfs-server, apache2, git, sqlite3]
+    # No apache2: with an S3 upstream, mkfs, publish and the mount work without
+    # it (spike S3), and it would hold port 80 if the Cache shares the host.
+    name: [cvmfs, cvmfs-server, git, sqlite3]
     state: present
     update_cache: true
 

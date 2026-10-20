@@ -38,8 +38,16 @@ filer1's own API and UI (port 443) keep TrueNAS's self-signed certificate; only 
 
 From the repo root in a `nix develop` shell (`mc`, `sops` and `jq` are in it), in your own terminal:
 
+Set the alias on its own first. It prompts for the root user and password, and any lines pasted
+after it are read as the answer:
+
 ```sh
-mc alias set filer1 https://minio.hayweb.org:9000      # prompts for the root user and password
+mc alias set filer1 https://minio.hayweb.org:9000
+```
+
+Once the prompt is answered, run the rest:
+
+```sh
 mc mb filer1/cvmfs
 mc anonymous set-json server/minio/bucket-policy.json filer1/cvmfs   # GetObject only; no listing
 server/minio/create-publisher-key.sh filer1 <root user>
