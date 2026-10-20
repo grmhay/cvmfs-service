@@ -80,8 +80,8 @@ nix_overlay_store_url: "local-overlay://?lower-store=local%3Froot%3D{{ nix_lower
 # A YAML boolean from inventory (unquoted false/true) counts as "false"/"true";
 # any other value fails the play. In union Mode, "true" and "root" end the run
 # with a sandboxed smoke build (tasks/smoke.yml). With "true" the version gate
-# (nix_sandbox_fix_version, below) runs first, so the smoke build can only fail
-# for "true" once nix_sandbox_fix_version is set at or below the installed Nix.
+# (nix_sandbox_fix_version and nix_sandbox_fork, below) runs first, so the smoke
+# build can only fail for "true" once one of them says the installed Nix has the fix.
 nix_union_sandbox: "false"
 
 # First Nix release carrying the chroot fix (chroot parent 0100, owned by the
@@ -91,6 +91,17 @@ nix_union_sandbox: "false"
 # release exists, so "true" is refused on every version. "false", "root" and
 # the cache/thin Modes are never gated.
 nix_sandbox_fix_version: ""
+
+# Canary-only exception (#14, amended #6): the chroot fix backported to the
+# pinned Nix as a fork build whose version ends in nix_sandbox_fork_suffix
+# (docs/canary-nix-fork.md). Set nix_sandbox_fork true only for hosts with the
+# nix-canary tag, through NetBox or inventory, never in a playbook. With it on
+# and nix_union_sandbox "true", the gate accepts the fork instead of
+# nix_sandbox_fix_version. It never installs the fork, and a pin bump past the
+# fork's base replaces the fork with stock Nix (then the gate refuses "true"
+# again until nix_sandbox_fix_version is set).
+nix_sandbox_fork: false
+nix_sandbox_fork_suffix: "+chrootfix"
 
 nix_gc_older_than: 30d
 nix_min_free: 2G

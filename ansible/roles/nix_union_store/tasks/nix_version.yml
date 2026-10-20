@@ -1,5 +1,7 @@
 ---
-# Sets _nix_installed_version: the Nix the default profile runs. Read-only, so
+# Sets _nix_installed_version (X.Y.Z, for comparisons) and _nix_installed_release
+# (the full version token, e.g. 2.30.0+chrootfix for the canary fork, #14): the
+# Nix the default profile runs. Read-only, so
 # it also runs under --check. Included before the upgrade and again after one;
 # the upgrade and the sandbox gate both read this fact.
 
@@ -14,3 +16,4 @@
 - name: Parse the installed Nix version
   ansible.builtin.set_fact:
     _nix_installed_version: "{{ _nix_version_out.stdout | regex_findall('[0-9]+\\.[0-9]+\\.[0-9]+') | last }}"
+    _nix_installed_release: "{{ _nix_version_out.stdout.split() | last }}"

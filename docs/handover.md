@@ -5,8 +5,8 @@ State of the work as of **2026-10-19**. Design: `plans/0001-nix-over-cvmfs.md`; 
 Phase 0 (prerequisites and spikes) is done apart from one deferred check. All four long-lived VMs
 now exist. **Phase 1 (the Origin) is ready to run once grmhay/ansible-lab-config#113 lands**: the
 Publisher's first-run problems found on 2026-10-19 (#15, #16, the master key, nix.conf) are fixed on
-master, but none of it has run on a real host. #14, the chroot-fix Nix fork on the canaries, was
-in progress in another session (uncommitted in the main checkout) at the time of writing.
+master, but none of it has run on a real host. #14, the chroot-fix Nix fork on the canaries, is
+done: all three canaries run the fork in union Mode with the sandbox on.
 
 ## Where things stand
 
@@ -21,7 +21,7 @@ in progress in another session (uncommitted in the main checkout) at the time of
 | Publisher first run (#15, #16) | fixed on master, not yet run: see "Next: Phase 1" |
 | Upstream chroot-parent fix (#9) | the user's, by hand. Nothing is filed on NixOS/nix by an agent |
 | Nix sandbox on the union (#6 parent, #13) | fleet-wide: waits for a Nix release with the #9 fix, then a Determinate installer that ships it |
-| Chroot-fix fork on the canaries (#14) | `ready-for-agent`; another session had it in progress on 2026-10-19 (uncommitted in the main checkout). #6 was amended on 2026-10-19 to allow it on `nix-canary` hosts only |
+| Chroot-fix fork on the canaries (#14) | done 2026-10-19: `docs/canary-nix-fork.md`. `pi7`, `nixcanary-deb1` and `nixcanary-rhel1` run `2.30.0+chrootfix` in union Mode over the stand-in Lower Store `/srv/lower`, sandbox on. Their `nix_union_sandbox`/`nix_sandbox_fork` settings still need to go into NetBox (#113) |
 
 ## Next: Phase 1, the Origin (`publisher.yml` on VMID 111)
 
@@ -62,14 +62,16 @@ wait out the TTL → re-run to assemble the union. Watch on that run: the two mo
 `cvmfs_server transaction`/`publish` with the second client instance up, the `findmnt`/`cvmfs_talk`
 probe output, and the store migration into the RW Branch.
 
-## Next for an agent: the canary fork (#14)
+## The canaries after #14
 
-The issue body is the brief. Rebase the two fix commits from `grmhay/nix:chroot-parent-fuse-traverse` onto Nix
-2.30.0 (installer pin 3.8.0) with a version suffix, and build for x86_64 and aarch64. Copy the build to `pi7`,
-`nixcanary-deb1` and `nixcanary-rhel1` and switch the default profile, with no binary cache. Then add an opt-in
-role variable that lets the version gate (`sandbox_gate.yml`) accept the suffix on those hosts only. Acceptance
-is the gate, the smoke build and `spikes/s2-nix-chroot-fix.sh` passing on all three, with the results recorded
-for #9's upstream PR. The installer pin does not move. Every host outside the `nix-canary` tag keeps stock Nix.
+`pi7`, `nixcanary-deb1` and `nixcanary-rhel1` now run a Union Store over the stand-in Lower Store at
+`/srv/lower`, because no Repository existed yet. When the Repository is published, their
+`nix_lower_store` moves to the role default (the Repository's `/nix`). The settings for this were passed
+with `-e`. Until NetBox sets `nix_union_sandbox: "true"` and `nix_sandbox_fork: true` for the
+`nix-canary` tag, a role run from the production inventory turns their sandbox back off. The fork stays
+until a pin bump.
+
+`nixcanary-rhel1` needs root over SSH: a later `wheel` sudo rule asks the `ansible` user for a password.
 
 ## Triage conventions
 
@@ -118,10 +120,6 @@ projects get the loop and the triage labels doc on `copier update`; their `CLAUD
 - Confirm before outward-facing actions (issues, PRs, pushes) unless asked.
 
 ## Other loose ends
-
-- The main checkout's local `master` was left at 63967c9 on 2026-10-19 (behind origin), because it held the
-  #14 session's uncommitted `nix_union_store` changes, which overlap #15's `defaults/main.yml` edit. That
-  work must be committed and rebased onto `origin/master` before pulling.
 
 - pidns1 and pidns2 report different `hayweb.org` SOA serials: seen 2026-10-16, still different on 2026-10-19
   (1771979346 on 192.168.40.17, 1771807930 on 192.168.50.17). Not investigated.

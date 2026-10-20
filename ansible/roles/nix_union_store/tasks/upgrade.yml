@@ -69,7 +69,9 @@
   when: _nix_upgrade is changed and not ansible_check_mode
 
 # Every run, upgrade or not: a daemon still on an older Nix than the profile
-# (a restart that failed after an earlier upgrade) is restarted onto it.
+# (a restart that failed after an earlier upgrade) is restarted onto it. The
+# full release string is compared, so a fork build (2.30.0+chrootfix) is not
+# mistaken for a stale daemon.
 - name: The daemon runs the installed Nix
   become: true
   environment:
@@ -89,7 +91,7 @@
       register: _nix_daemon_restart
       # nix store info prints to stderr on some Nix releases
       when: >-
-        ('Version: ' ~ _nix_installed_version)
+        ('Version: ' ~ _nix_installed_release)
         not in _nix_daemon_info.stdout_lines + _nix_daemon_info.stderr_lines
 
     - name: Re-read the daemon's Nix version after the restart
@@ -98,5 +100,5 @@
       changed_when: false
       failed_when: >-
         _nix_daemon_after.rc != 0
-        or ('Version: ' ~ _nix_installed_version) not in _nix_daemon_after.stdout_lines + _nix_daemon_after.stderr_lines
+        or ('Version: ' ~ _nix_installed_release) not in _nix_daemon_after.stdout_lines + _nix_daemon_after.stderr_lines
       when: _nix_daemon_restart is changed and not ansible_check_mode

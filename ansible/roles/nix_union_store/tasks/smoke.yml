@@ -46,7 +46,7 @@
       under the store with mode 0700, and mergerfs resolves every path as the
       build user, so the build cannot see its own chroot (spike S2, ADR 0002).
       Stock Nix needs the upstream fix tracked in grmhay/cvmfs-service#6; if
-      nix_sandbox_fix_version claims this Nix has it, check that claim. Until
+      nix_sandbox_fix_version or nix_sandbox_fork claims this Nix has it, check that claim. Until
       then set nix_union_sandbox to "root" or "false" for this host.
       {% else %}
       Builds run as root inside the sandbox here, so the build-user chroot

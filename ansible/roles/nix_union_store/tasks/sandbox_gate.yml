@@ -1,21 +1,30 @@
 ---
 # Version gate (#11, spec #6): refuse nix_union_sandbox "true" in union Mode
-# unless the installed Nix carries the chroot fix (nix_sandbox_fix_version).
+# unless the installed Nix carries the chroot fix. Two ways to carry it:
+#   - a release at or above nix_sandbox_fix_version (fleet-wide, #13);
+#   - the canary-only fork (#14): nix_sandbox_fork is on for this host and the
+#     installed Nix's version ends in nix_sandbox_fork_suffix.
 # Runs before nix.conf, the mount or the daemon drop-in are touched, so a
-# refused run leaves the host as it was. Reads _nix_installed_version
-# (nix_version.yml), which is re-read after an upgrade.
+# refused run leaves the host as it was. Reads _nix_installed_version and
+# _nix_installed_release (nix_version.yml), which are re-read after an upgrade.
 
 - name: Refuse the sandbox on a Nix without the chroot fix
   vars:
     _nix_required: "{{ nix_sandbox_fix_version | default('', true) | string }}"
+    _nix_release_ok: >-
+      {{ _nix_required | length > 0 and _nix_installed_version is version(_nix_required, '>=') }}
+    _nix_fork_ok: >-
+      {{ nix_sandbox_fork | bool and _nix_installed_release.endswith(nix_sandbox_fork_suffix) }}
   ansible.builtin.assert:
-    that:
-      - _nix_required | length > 0
-      - _nix_installed_version is version(_nix_required, '>=')
+    that: _nix_release_ok | bool or _nix_fork_ok | bool
     fail_msg: >-
-      nix_union_sandbox "true" refused: installed Nix {{ _nix_installed_version }},
+      nix_union_sandbox "true" refused: installed Nix {{ _nix_installed_release }},
       required Nix {{ _nix_required if _nix_required | length > 0 else
       'unknown (nix_sandbox_fix_version is unset: no Nix release carries the chroot fix yet)' }}.
-      Sandboxed builds on the Union Store fail without that fix (spike S2, ADR 0002, #6).
+      {% if nix_sandbox_fork | bool %}nix_sandbox_fork is on, but the installed Nix is not the fork
+      (its version does not end in {{ nix_sandbox_fork_suffix }}): install it first (docs/canary-nix-fork.md).
+      {% endif %}Sandboxed builds on the Union Store fail without that fix (spike S2, ADR 0002, #6).
       Set nix_union_sandbox to "false" (no sandbox) or "root" (sandbox, builds run as root) for this host.
-    success_msg: "Installed Nix {{ _nix_installed_version }} carries the chroot fix (>= {{ _nix_required }})"
+    success_msg: >-
+      Installed Nix {{ _nix_installed_release }} carries the chroot fix
+      ({{ ('canary fork, ' ~ nix_sandbox_fork_suffix) if _nix_fork_ok | bool else ('>= ' ~ _nix_required) }})
