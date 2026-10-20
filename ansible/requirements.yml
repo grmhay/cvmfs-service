@@ -1,9 +1,12 @@
 ---
-# Collections the roles use. ansible-lab-config consumes the roles themselves via:
-#   roles:
-#     - src: https://github.com/grmhay/cvmfs-service.git
-#       scm: git
+# Collections the roles use. ansible-lab-config consumes this directory as the
+# collection grmhay.cvmfs_service (see galaxy.yml), pinned to a tag:
+#   collections:
+#     - name: https://github.com/grmhay/cvmfs-service.git#/ansible/
+#       type: git
 #       version: v0.1.0      # tag; bump to roll the fleet (Q23)
+# ansible-galaxy cannot install this repo as roles: it holds several roles
+# under ansible/roles/ with no meta/main.yml and has no subdirectory support.
 collections:
   - name: ansible.posix
     version: ">=1.5.0"

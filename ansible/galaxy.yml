@@ -1,0 +1,27 @@
+---
+# Makes ansible/ installable as the collection grmhay.cvmfs_service, from a tag:
+#   ansible-galaxy collection install \
+#     'git+https://github.com/grmhay/cvmfs-service.git#/ansible/,v0.1.0'
+# ansible-galaxy cannot install a multi-role repo as roles (no meta/main.yml,
+# no subdirectory support), which is how ansible-lab-config#113 first tried it.
+# Roles are then grmhay.cvmfs_service.<role>; the playbooks run as
+#   ansible-playbook grmhay.cvmfs_service.publisher   (cache, builders, clients)
+namespace: grmhay
+name: cvmfs_service
+version: 0.1.0
+readme: README.md
+authors:
+  - grmhay
+description: CernVM-FS publisher, nginx cache, Nix builders and union-store clients for the hayweb.org fleet
+license:
+  - MIT
+tags: [infrastructure, cvmfs, nix]
+dependencies:
+  ansible.posix: ">=1.5.0"
+  netbox.netbox: "*"
+repository: https://github.com/grmhay/cvmfs-service
+build_ignore:
+  - .ansible-lint
+  - ansible.cfg
+  - inventory.netbox.example.yml
+  - requirements.yml

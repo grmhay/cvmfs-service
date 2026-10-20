@@ -1,9 +1,18 @@
 ---
-# NetBox dynamic inventory (decision Q25). Lives in ansible-lab-config; this is
-# the shape the roles expect. Groups:
+# NetBox dynamic inventory (decision Q25). Lives in ansible-lab-config
+# (nb_inventory.yml); this is the shape the roles expect.
+#
+# Groups the playbooks target:
 #   tag_nix_builder, tag_nix_canary  — from NetBox tags
 #   nix_publisher, nix_cache         — from device role
-# Host vars from custom fields: nix_group, nix_channel, cvmfs_nix_mode, cvmfs_quota_limit_mb.
+# group_by alone does NOT produce those names: nb_inventory prefixes auto-groups
+# with the key and keeps the raw slug (tags_nix-builder,
+# device_roles_nix_publisher), so the groups are declared explicitly below.
+#
+# Host vars from custom fields: nix_group, nix_channel, cvmfs_nix_mode,
+# cvmfs_quota_limit_mb. Once a custom field exists it is null on every host
+# that has not set it, and `default()` only covers Undefined, so each compose
+# line tests `is not none`. Fallbacks are the role defaults.
 plugin: netbox.netbox.nb_inventory
 api_endpoint: https://netbox.hayweb.org
 validate_certs: true
@@ -11,8 +20,21 @@ config_context: false
 group_by:
   - tags
   - device_roles
+groups:
+  tag_nix_builder: "'nix-builder' in tags"
+  tag_nix_canary: "'nix-canary' in tags"
+  nix_publisher: "'nix_publisher' in device_roles"
+  nix_cache: "'nix_cache' in device_roles"
 compose:
-  nix_group: custom_fields.nix_group | default('base')
-  nix_channel: custom_fields.nix_channel | default('stable')
-  cvmfs_nix_mode: custom_fields.cvmfs_nix_mode | default('union')
-  cvmfs_quota_limit_mb: custom_fields.cvmfs_quota_limit_mb | default(20000)
+  nix_group: >-
+    custom_fields.nix_group
+    if (custom_fields.nix_group | default(none)) is not none else 'base'
+  nix_channel: >-
+    custom_fields.nix_channel
+    if (custom_fields.nix_channel | default(none)) is not none else 'stable'
+  cvmfs_nix_mode: >-
+    custom_fields.cvmfs_nix_mode
+    if (custom_fields.cvmfs_nix_mode | default(none)) is not none else 'union'
+  cvmfs_quota_limit_mb: >-
+    custom_fields.cvmfs_quota_limit_mb
+    if (custom_fields.cvmfs_quota_limit_mb | default(none)) is not none else 20000
