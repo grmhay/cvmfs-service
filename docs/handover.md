@@ -2,8 +2,9 @@
 
 State of the work as of **2026-10-19**. Design: `plans/0001-nix-over-cvmfs.md`; vocabulary: `CONTEXT.md`.
 
-Phase 0 (prerequisites and spikes) is done apart from one deferred check. **No open issue is ready
-for an agent right now**: each one waits on something outside this repo or on the user.
+Phase 0 (prerequisites and spikes) is done apart from one deferred check. **One open issue is ready
+for an agent: #14**, the chroot-fix Nix fork on the canaries. Every other open issue waits on
+something outside this repo or on the user.
 
 ## Where things stand
 
@@ -16,13 +17,15 @@ for an agent right now**: each one waits on something outside this repo or on th
 | Bucket `cvmfs`, policy, `cvmfs-publisher` account (#4) | done; keys in `secrets/publisher.enc.yaml`. **Open by choice:** the `verify-origin` run from a cloud host over OpenVPN |
 | Long-lived VMs (#5) | canaries `nixcanary-deb1` (103) and `nixcanary-rhel1` (109) done. `publisher` and `cache1` wait, see below |
 | Upstream chroot-parent fix (#9) | the user's, by hand. Nothing is filed on NixOS/nix by an agent |
-| Nix sandbox on the union (#6 parent, #13) | waits for a Nix release with the #9 fix, then a Determinate installer that ships it |
+| Nix sandbox on the union (#6 parent, #13) | fleet-wide: waits for a Nix release with the #9 fix, then a Determinate installer that ships it |
+| Chroot-fix fork on the canaries (#14) | **ready for an agent.** #6 was amended on 2026-10-19 to allow it on `nix-canary` hosts only |
 
 ## Next: building `publisher` and `cache1` (#5)
 
 Two things stand in the way, and one fix needs proving. Check each before starting:
 
-1. **grmhay/ansible-lab-config#113** (NetBox as inventory source: `nix_group`, `nix_channel`, tags) is still open.
+1. **grmhay/ansible-lab-config#113** (NetBox as inventory source: `nix_group`, `nix_channel`, tags) is still open
+   but moving: its pin of this repo is done, using the `v0.1.0` tag (see "Ansible collection" below).
 2. **VM templates.** packer-service#100 (grow the root LV to the disk size) merged on 2026-10-09. Issue 5 says the
    templates must be rebuilt with it; whether they have been was not checked.
 3. **The resolver rate limit: fix chosen, not yet proven.** After a burst of lookups, both LAN resolvers
@@ -32,6 +35,15 @@ Two things stand in the way, and one fix needs proving. Check each before starti
    build, publish and run `cvmfs_server check`, then confirm no `REFUSED` (S3 doc, "Resolver rate limit").
 
 Remove `blocked` from #5 only when 1 and 2 are cleared.
+
+## Next for an agent: the canary fork (#14)
+
+The issue body is the brief. Rebase the two fix commits from `grmhay/nix:chroot-parent-fuse-traverse` onto Nix
+2.30.0 (installer pin 3.8.0) with a version suffix, and build for x86_64 and aarch64. Copy the build to `pi7`,
+`nixcanary-deb1` and `nixcanary-rhel1` and switch the default profile, with no binary cache. Then add an opt-in
+role variable that lets the version gate (`sandbox_gate.yml`) accept the suffix on those hosts only. Acceptance
+is the gate, the smoke build and `spikes/s2-nix-chroot-fix.sh` passing on all three, with the results recorded
+for #9's upstream PR. The installer pin does not move. Every host outside the `nix-canary` tag keeps stock Nix.
 
 ## Triage conventions
 
@@ -50,6 +62,11 @@ projects get the loop and the triage labels doc on `copier update`; their `CLAUD
 `README.md` are project-owned and stay as they are.
 
 ## Working notes
+
+- **Ansible collection:** since `v0.1.0` (83734c8), `ansible/` installs as the collection `grmhay.cvmfs_service`
+  from the git subdirectory. Its roles are `grmhay.cvmfs_service.<role>`, and its playbooks run as
+  `grmhay.cvmfs_service.publisher`, `cache`, `builders` and `clients`. Consumers pin it by tag, so a role change
+  they need means a new tag.
 
 - **vm-service:** `--prefix 192.168.20.0/24` lets it pick a clean address from NetBox's reservable range; there
   is no NetBox token in this environment for looking one up. Its first-boot Ansible run keeps going after
