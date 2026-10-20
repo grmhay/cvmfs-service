@@ -19,14 +19,21 @@ All commands run from the checkout root inside a `nix develop` shell on the work
 
 1. `cvmfs_publisher` (tasks `repository`): runs mkfs once and fetches the new public key to
    `ansible/roles/cvmfs_client/files/nix.hayweb.org.pub`.
-2. `cvmfs_client` and `nix_union_store`: ship that key, mount the client view of the repository at
-   `/cvmfs-client/nix.hayweb.org` (through the Cache), and assemble the union store on it. mkfs
-   owns `/cvmfs/nix.hayweb.org` here, and the client mount leaves it alone (ADR 0004).
+2. `cvmfs_client` and `nix_union_store`: ship that key and mount the client view of the repository
+   at `/cvmfs-client/nix.hayweb.org` (through the Cache). mkfs owns `/cvmfs/nix.hayweb.org` here,
+   and the client mount leaves it alone (ADR 0004). The repository is still empty: it has no Lower
+   Store until the first publish (step 4). So the union store is not assembled yet, and the run
+   prints "Union deferred until the first publish". `/nix/store` stays the installer's plain local
+   store, which is all the first publish needs (#16).
 3. `cvmfs_publisher` (tasks `publishing`): sets up the builders and the clone, then installs the
-   resign and publish timers.
+   resign and publish timers. The publish timer stays off (`publisher_timer_enabled: false`).
 
 On this run the master key is still on the Publisher. The guard ("Master key is not on the
 Publisher") lets the run that created the repository finish, and the last task prints a reminder.
+
+Only `publisher.yml` defers the union, through the play variable `nix_union_defer_until_published`.
+On any other host an empty repository fails the run at "The Lower Store is there", and so does the
+Publisher once its union has been assembled.
 
 ## 2. Escrow the master key
 
@@ -60,7 +67,35 @@ git commit -m "Escrow the nix.hayweb.org master key; commit its public key"
 The guard now passes, and every step is a no-op or converges. From now on, any run that finds the
 master key on the Publisher fails at the guard and names `masterkey-escrow`. The only time the key is
 there on purpose is during a resign; pass `-e publisher_allow_masterkey=true` if you must run the
-playbook then.
+playbook then. Nothing has been published yet, so the union is still deferred on this run.
+
+## 4. First publish, then assemble the union
+
+On the Publisher, run the reconciler once by hand. It publishes `master` to `canary`
+(publish/publish.sh), building aarch64 on the Builders:
+
+```sh
+sudo systemctl start cvmfs-publish.service
+journalctl -u cvmfs-publish.service -e    # ends "published <commit>"
+```
+
+The client view sees the publish once the Cache and the repository TTL (240 s) let it through:
+
+```sh
+ls /cvmfs-client/nix.hayweb.org/nix/var/nix/db/db.sqlite
+readlink /cvmfs-client/nix.hayweb.org/profiles/canary/builder/x86_64-linux
+```
+
+Then re-run the playbook. It finds the Lower Store, moves the plain `/nix/store` into the RW Branch,
+assembles the union and verifies it (the daemon serves the `builder` Profile through the overlay),
+as on any fleet host:
+
+```sh
+(cd ansible && ansible-playbook playbooks/publisher.yml)
+```
+
+If it still prints "Union deferred", the client view has not seen the publish yet: wait for the TTL
+and run it again.
 
 ## If the first run fails after mkfs
 

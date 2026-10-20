@@ -1,11 +1,13 @@
 ---
 # Late part of the Publisher, run AFTER cvmfs_client and nix_union_store
-# (playbooks/publisher.yml), because it needs Nix and the union store:
+# (playbooks/publisher.yml), because it needs Nix and the role's nix.conf:
 # ssh keys -> remote builders (nix.conf drop-in) -> clone -> resign and publish units.
-# The publish reconciler builds with Nix and writes into the repository's
-# Lower Store, so its timer only starts once the client mount and the union
-# store are up. Expects repository.yml to have run in the same play
-# (publisher_secrets, _masterkey).
+# None of it needs the union store. publish/publish.sh builds through the
+# daemon and writes the Lower Store into the transaction at /cvmfs/<repo>, so
+# the first publish runs on the plain local store the Publisher keeps until
+# then (nix_union_defer_until_published, #16). The publish timer stays off
+# until that first manual publish succeeds (publisher_timer_enabled).
+# Expects repository.yml to have run in the same play (publisher_secrets, _masterkey).
 
 - name: Ssh directory
   become: true

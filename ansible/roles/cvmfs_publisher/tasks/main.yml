@@ -2,7 +2,7 @@
 # The whole role, in order. playbooks/publisher.yml does NOT use this file:
 # it runs repository.yml, then cvmfs_client + nix_union_store, then
 # publishing.yml, because the client mount needs the key mkfs creates and
-# publishing needs the union store. The dirtab is installed by
+# publishing needs Nix and its nix.conf. The dirtab is installed by
 # publish/publish.sh in every transaction.
 
 - name: Repository (mkfs, master-key guard, public key)

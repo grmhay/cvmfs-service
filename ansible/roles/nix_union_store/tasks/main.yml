@@ -73,9 +73,15 @@
     mode: "0644"
   notify: Restart nix-daemon
 
+# Before any union step: on the Publisher before the first publish there is no
+# Lower Store yet, and the union waits for it (#16); anywhere else that fails.
+- name: Lower Store present (or the Publisher's first run)
+  ansible.builtin.include_tasks: lower_store.yml
+  when: cvmfs_nix_mode == "union"
+
 - name: Union-store assembly
   ansible.builtin.include_tasks: union.yml
-  when: cvmfs_nix_mode == "union"
+  when: cvmfs_nix_mode == "union" and not (_nix_union_deferred | default(false))
 
 - name: Cache-mode profile puller
   ansible.builtin.include_tasks: cache.yml
@@ -116,4 +122,6 @@
 # Last step: a broken sandbox fails the play, not someone's build later (#6).
 - name: Sandboxed smoke build
   ansible.builtin.include_tasks: smoke.yml
-  when: cvmfs_nix_mode == "union" and _nix_union_sandbox in ["true", "root"]
+  when: >-
+    cvmfs_nix_mode == "union" and _nix_union_sandbox in ["true", "root"]
+    and not (_nix_union_deferred | default(false))

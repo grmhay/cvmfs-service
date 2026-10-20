@@ -1,0 +1,77 @@
+---
+# Union Mode only, before anything is assembled: is the Lower Store there?
+# Sets _nix_union_deferred. It is true in exactly one case: the Publisher
+# before the first publish (#16). Every other host with no Lower Store fails
+# here, loudly.
+#
+# A Lower Store is a Nix store's /nix with a database: <nix_lower_store>/store
+# and var/nix/db/db.sqlite. publish/publish.sh creates both in the first
+# transaction. Before that, the Repository holds only what mkfs wrote, so
+# mergerfs would have no RO branch and the daemon's read-only lower store no
+# database to open. The daemon would then serve nothing, and the first
+# publish's `nix build` would fail with it.
+#
+# nix_union_defer_until_published (default false) is a play-level variable,
+# not a host fact: only playbooks/publisher.yml sets it. With it true and no
+# Lower Store, the role leaves /nix/store as the installer made it (plain,
+# local; the daemon on the default store) and skips the union and its checks.
+# The publishing part then sets up what the first publish needs. The first run
+# after a publish reaches the Lower Store and assembles the union, the same as
+# on a fresh fleet host. Once the union has been assembled (the installer's
+# store moved to the RW Branch), a missing Lower Store fails here even on the
+# Publisher: it is no longer the first run.
+
+- name: Look for the Lower Store database
+  ansible.builtin.stat:
+    path: "{{ nix_lower_store }}/var/nix/db/db.sqlite"
+    get_checksum: false
+  register: _lower_db
+
+- name: Look for the Lower Store's store directory
+  ansible.builtin.stat:
+    path: "{{ nix_lower_store }}/store"
+    get_checksum: false
+  register: _lower_store_dir
+
+- name: Has this host's union been assembled before?
+  ansible.builtin.stat:
+    path: "{{ nix_rw_root }}/store"
+    get_checksum: false
+  register: _rw_branch
+
+- name: Is the Lower Store there?
+  ansible.builtin.set_fact:
+    _nix_union_lower_present: "{{ _lower_db.stat.exists and (_lower_store_dir.stat.isdir | default(false)) }}"
+
+- name: Decide whether to defer the union
+  ansible.builtin.set_fact:
+    _nix_union_deferred: >-
+      {{ not _nix_union_lower_present
+         and (nix_union_defer_until_published | default(false) | bool)
+         and not _rw_branch.stat.exists }}
+
+- name: The Lower Store is there
+  ansible.builtin.assert:
+    that: _nix_union_lower_present or _nix_union_deferred
+    fail_msg: >-
+      No Lower Store at {{ nix_lower_store }} (no store/ or no var/nix/db/db.sqlite), so the Union
+      Store cannot be assembled. The Repository at {{ cvmfs_client_mountpoint }} is empty, not mounted,
+      or not yet published.
+      {% if (nix_union_defer_until_published | default(false) | bool) and _rw_branch.stat.exists %}
+      This host's union was assembled before ({{ nix_rw_root }}/store exists), so this is not the
+      Publisher's first run: something is wrong with the Repository or the client view.
+      {% else %}
+      On a fleet or Canary host this means something is wrong: check the Cache and
+      `cvmfs_talk -i {{ cvmfs_repository | default('<repo>') }} host info`.
+      {% endif %}
+    quiet: true
+
+- name: Union deferred until the first publish
+  ansible.builtin.debug:
+    msg: >-
+      Deferring the Union Store: {{ nix_lower_store }} has no Lower Store yet, which is expected
+      before the first publish on the Publisher (nix_union_defer_until_published). /nix/store stays
+      the installer's plain local store, and the union is not assembled or checked on this run.
+      After the first publish (docs/runbooks/publisher-bootstrap.md), re-run the playbook: it
+      assembles the union and verifies it.
+  when: _nix_union_deferred

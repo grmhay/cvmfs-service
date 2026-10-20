@@ -5,7 +5,10 @@
 # Order matters on a fresh host, so the role runs in two parts:
 #   1. cvmfs_publisher/repository: mkfs (once), the master-key guard, then
 #      fetch the new public key to roles/cvmfs_client/files/
-#   2. cvmfs_client + nix_union_store: ship that key, mount, union store
+#   2. cvmfs_client + nix_union_store: ship that key, mount, union store.
+#      Until the first publish the Repository has no Lower Store, so the
+#      union waits for it (nix_union_defer_until_published, #16): Nix runs on
+#      its plain local store, which is all the first publish needs
 #   3. cvmfs_publisher/publishing: builders, clone, reconciler and timers
 # A re-run does the same steps in the same order; each one is idempotent.
 # First run, then masterkey-escrow, then re-run: docs/runbooks/publisher-bootstrap.md.
@@ -29,10 +32,15 @@
         name: cvmfs_client
       vars: { cvmfs_quota_limit_mb: 50000 }
 
+    # nix_union_defer_until_published: an empty Repository is expected here,
+    # before the first publish, and only here. The role then leaves
+    # /nix/store plain and skips the union and its checks; the first run after
+    # a publish assembles and verifies it. Any host that does not set this
+    # (fleet, Canary) fails on an empty Repository (tasks/lower_store.yml).
     - name: Union store
       ansible.builtin.import_role:
         name: nix_union_store
-      vars: { nix_group: builder, nix_channel: canary }
+      vars: { nix_group: builder, nix_channel: canary, nix_union_defer_until_published: true }
 
     - name: Publishing (builders, reconciler, resign and publish timers)
       ansible.builtin.import_role:
