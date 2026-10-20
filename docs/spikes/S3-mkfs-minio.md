@@ -67,7 +67,7 @@ Store merges the Lower Store into `/nix/store`. That is by design and out of thi
    `cvmfs_server` writes `info/v1/repositories.json` only when a local `/srv/cvmfs/info` exists,
    which an S3 upstream never has. Clients do not read it.
 
-## Open: the resolver refuses the Publisher after a burst of lookups
+## Resolver rate limit: the resolvers refuse the Publisher after a burst of lookups
 
 Not a CVMFS or MinIO problem, and not fixed in this repo. After publish, and again after
 `cvmfs_server check`, both resolvers in the VM's `resolv.conf` (192.168.40.17 and 192.168.50.17)
@@ -77,8 +77,10 @@ limit on the resolvers (Pi-hole's default is 1000 queries per 60 s, answered wit
 publish with 16 parallel S3 connections looks up `minio.hayweb.org` for each request. The spike
 finished with `minio.hayweb.org` pinned in `s3-pub`'s `/etc/hosts`.
 
-The long-lived Publisher needs one of: a local caching resolver, an exemption from the rate limit
-for the Publisher, or a higher limit. Decide before #5 builds the Publisher.
+Chosen fix (1fadef6): `cvmfs_publisher` installs systemd-resolved as a local caching stub that
+forwards to `publisher_dns_upstreams`, with no public fallback. It is not yet proven on a host: the
+first `publisher` build (#5) should publish and run `cvmfs_server check` without any `REFUSED`.
 
 Result: **done**. Every check passed, findings 1–8 are in the roles and `publish/publish.sh`, and the
-scratch bucket and spike VMs are gone. The resolver finding above stays open for #5.
+scratch bucket and spike VMs are gone. The resolver fix above is proven on #5's
+first `publisher` build.

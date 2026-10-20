@@ -20,17 +20,18 @@ for an agent right now**: each one waits on something outside this repo or on th
 
 ## Next: building `publisher` and `cache1` (#5)
 
-Three things stand in the way. Check each before starting:
+Two things stand in the way, and one fix needs proving. Check each before starting:
 
 1. **grmhay/ansible-lab-config#113** (NetBox as inventory source: `nix_group`, `nix_channel`, tags) is still open.
 2. **VM templates.** packer-service#100 (grow the root LV to the disk size) merged on 2026-10-09. Issue 5 says the
    templates must be rebuilt with it; whether they have been was not checked.
-3. **The resolver rate limit.** After a burst of lookups, both resolvers (192.168.40.17, 192.168.50.17) answered
-   `REFUSED` to the spike Publisher for minutes, while other hosts on VLAN 20 got answers. A publish resolves
-   `minio.hayweb.org` per S3 request. The user has to pick a fix: a local caching resolver, an exemption or higher
-   limit on the resolvers, or pinning the name from `cvmfs_publisher`. Evidence is in the S3 doc ("Open") and on #5.
+3. **The resolver rate limit: fix chosen, not yet proven.** After a burst of lookups, both LAN resolvers
+   (192.168.40.17, 192.168.50.17) answered `REFUSED` to the spike Publisher for minutes. 1fadef6 gives
+   `cvmfs_publisher` a local caching systemd-resolved stub that forwards to `publisher_dns_upstreams`, with no
+   public fallback, and a dig check through the stub. It has not run on a host yet. On the first `publisher`
+   build, publish and run `cvmfs_server check`, then confirm no `REFUSED` (S3 doc, "Resolver rate limit").
 
-Remove `blocked` from #5 only when 1 and 2 are cleared; 3 is a decision, not a blocker.
+Remove `blocked` from #5 only when 1 and 2 are cleared.
 
 ## Triage conventions
 
