@@ -20,19 +20,8 @@
     state: present
     update_cache: true
 
-- name: Decrypt publisher secrets (control node)
-  delegate_to: localhost
-  become: false
-  run_once: true
-  ansible.builtin.command: "sops --decrypt {{ publisher_secrets_file }}"
-  register: _secrets_raw
-  changed_when: false
-  no_log: true
-
-- name: Parse secrets
-  ansible.builtin.set_fact:
-    publisher_secrets: "{{ _secrets_raw.stdout | from_yaml }}"
-  no_log: true
+- name: Publisher secrets
+  ansible.builtin.import_tasks: secrets.yml
 
 - name: Publisher user
   become: true

@@ -17,7 +17,7 @@ done: all three canaries run the fork in union Mode with the sandbox on.
 | S2 union store (#2), sandbox groundwork (#6: #7, #8, #10–#12) | done: `docs/spikes/S2-union-store.md`, ADR 0002 |
 | S3 mkfs/publish against MinIO (#3) | done and closed 2026-10-19: `docs/spikes/S3-mkfs-minio.md` |
 | MinIO rename + Let's Encrypt cert (homelab-opscontrolplane#126) | done 2026-10-11; the `truenas-cert-pusher` sidecar in Caddy's stack on skyline renews it |
-| Bucket `cvmfs`, policy, `cvmfs-publisher` account (#4) | done; keys in `secrets/publisher.enc.yaml`. **Open by choice:** the `verify-origin` run from a cloud host over OpenVPN |
+| Bucket `cvmfs`, policy, `cvmfs-publisher` account (#4) | done; keys in `ansible/secrets/publisher.enc.yaml`. **Open by choice:** the `verify-origin` run from a cloud host over OpenVPN |
 | Long-lived VMs (#5) | done and closed 2026-10-20: canaries `nixcanary-deb1` (103), `nixcanary-rhel1` (109); `publisher` (111, 192.168.20.118, 100 GB) and `cache1` (112, 192.168.20.119, 120 GB). NetBox roles, tags and custom fields set (ansible-lab-config#113) |
 | Publisher first run (#15, #16) | fixed on master, not yet run: see "Next: Phase 1" |
 | Upstream chroot-parent fix (#9) | the user's, by hand. Nothing is filed on NixOS/nix by an agent |
@@ -44,7 +44,7 @@ Fixed on master on 2026-10-19, none of it run on a real host yet:
   and `nix_union_store`; the publishing part comes last. A guard fails the play if
   `/etc/cvmfs/keys/<repo>.masterkey` is still on the Publisher (except on the mkfs run, or with
   `publisher_allow_masterkey: true` during `resign`). `nix run .#masterkey-escrow` streams it into
-  `secrets/masterkey.enc.yaml` and shreds it after a hash match.
+  `ansible/secrets/masterkey.enc.yaml` and shreds it after a hash match.
 - **Mount clash** (#15, ADR 0004): the Publisher's client view is at `/cvmfs-client/nix.hayweb.org`
   (`cvmfs_client_mountpoint`), reading through the Cache; `cvmfs_server` keeps `/cvmfs/nix.hayweb.org`.
 - **nix.conf** (dca29c2): `nix_union_store` owns `nix.conf`; the Publisher and builders write

@@ -9,7 +9,15 @@ publisher_repo_dir: "{{ publisher_home }}/cvmfs-service"
 publisher_state_dir: "{{ publisher_home }}/.local/state/cvmfs-publish"
 publisher_interval: 5min
 publisher_timer_enabled: false    # enable after the first manual publish succeeds
-publisher_secrets_file: "{{ playbook_dir }}/../../secrets/publisher.enc.yaml"
+# Relative to the role, so it resolves inside a vendored collection as well as
+# a checkout (ansible/secrets/ ships with every tag; ADR 0005).
+publisher_secrets_file: "{{ role_path }}/../../secrets/publisher.enc.yaml"
+# The control user's age key at its conventional place. Taken from the passwd
+# entry, not $HOME, which Semaphore sets per template. An exported
+# SOPS_AGE_KEY_FILE wins.
+sops_age_key_file: >-
+  {{ lookup('ansible.builtin.env', 'SOPS_AGE_KEY_FILE')
+     or ('~' ~ lookup('ansible.builtin.pipe', 'id -un') ~ '/.config/sops/age/keys.txt') | expanduser }}
 
 # mkfs -w: where the Publisher reads its own repository back (CVMFS_STRATUM0;
 # cvmfs_server appends /<repository>). The bucket itself, never the Cache: a
@@ -44,7 +52,7 @@ cvmfs_release_deb: https://ecsft.cern.ch/dist/cvmfs/cvmfs-release/cvmfs-release-
 publisher_public_key_fetch_dest: ""
 
 # The master key may be on the Publisher only during a resign. mkfs leaves it
-# here; publish/masterkey-escrow.sh moves it into secrets/masterkey.enc.yaml.
+# here; publish/masterkey-escrow.sh moves it into ansible/secrets/masterkey.enc.yaml.
 # Any run after the first fails while it is present, unless this is true
 # (tasks/masterkey_guard.yml, docs/runbooks/publisher-bootstrap.md).
 publisher_masterkey_path: "/etc/cvmfs/keys/{{ cvmfs_repository }}.masterkey"

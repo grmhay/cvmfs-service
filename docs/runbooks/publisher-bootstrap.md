@@ -4,12 +4,14 @@
 **master key** must not stay on the Publisher: it lives in SOPS and comes back only for a resign
 (CLAUDE.md, docs/runbooks/resign.md). This is the one-off sequence that gets both keys where they
 belong. Before you start, the Origin bucket must be verified (server/minio/RUNBOOK.md) and
-`secrets/publisher.enc.yaml` must hold the MinIO keys, the builder key and the deploy key
-(secrets/README.md).
+`ansible/secrets/publisher.enc.yaml` must hold the MinIO keys, the builder key and the deploy key
+(ansible/secrets/README.md).
 
-All commands run from the checkout root inside a `nix develop` shell on the workstation. The
-playbook steps can also run as Semaphore template 7 (`cvmfs: publisher`) from the collection that
-ansible-lab-config vendors; see [Under Semaphore](#under-semaphore).
+The playbook steps normally run as Semaphore template 7 (`cvmfs: publisher`) from the collection
+that ansible-lab-config vendors; see [Under Semaphore](#under-semaphore). The non-playbook steps
+(escrow, committing the public key, tagging) run from a checkout inside a `nix develop` shell on any
+host with the shared age key (ADR 0005); the commands below assume the checkout root. Running the
+playbook from such a checkout works too.
 
 ## 1. Playbook (creates the repository)
 
@@ -49,7 +51,7 @@ nix run .#masterkey-escrow            # PUBLISHER_HOST=<ssh name> if it is not "
 ```
 
 `publish/masterkey-escrow.sh` streams `/etc/cvmfs/keys/nix.hayweb.org.masterkey` over ssh straight
-into `sops`, which writes `secrets/masterkey.enc.yaml` (field `masterkey`, the `.sops.yaml` recipient).
+into `sops`, which writes `ansible/secrets/masterkey.enc.yaml` (field `masterkey`, the `.sops.yaml` recipient).
 The plaintext never touches the workstation's disk. The script then decrypts that file with the same
 command the resign runbook uses and compares its sha256 with the Publisher's copy. It shreds the
 Publisher's copy only if they match. It prints no secret values and does not commit.
@@ -64,7 +66,7 @@ fetch it from the Publisher:
 ```sh
 ssh publisher cat /etc/cvmfs/keys/nix.hayweb.org.pub > ansible/roles/cvmfs_client/files/nix.hayweb.org.pub
 sha256sum ansible/roles/cvmfs_client/files/nix.hayweb.org.pub   # = the sha256 the run printed
-git add secrets/masterkey.enc.yaml ansible/roles/cvmfs_client/files/nix.hayweb.org.pub
+git add ansible/secrets/masterkey.enc.yaml ansible/roles/cvmfs_client/files/nix.hayweb.org.pub
 git commit -m "Escrow the nix.hayweb.org master key; commit its public key"
 ```
 

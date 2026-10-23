@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Masterkey escrow: move the Repository master key that `cvmfs_server mkfs`
-# leaves on the Publisher into secrets/masterkey.enc.yaml (SOPS + age, the
+# leaves on the Publisher into ansible/secrets/masterkey.enc.yaml (SOPS + age, the
 # recipient in .sops.yaml), then remove it from the Publisher. Run by hand
 # from the checkout root on the workstation, in a `nix develop` shell, after
 # the first run of ansible/playbooks/publisher.yml
@@ -23,7 +23,7 @@ repo="${CVMFS_REPOSITORY:?}"
 host="${PUBLISHER_HOST:-publisher}"
 flake="${PUBLISH_FLAKE:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 remote_key="${PUBLISHER_MASTERKEY:-/etc/cvmfs/keys/$repo.masterkey}"
-secret_rel="secrets/masterkey.enc.yaml"
+secret_rel="ansible/secrets/masterkey.enc.yaml"
 secret="$flake/$secret_rel"
 
 log() { printf '%s masterkey-escrow[%s]: %s\n' "$(date -Is)" "$repo" "$*" >&2; }

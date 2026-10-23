@@ -1,5 +1,5 @@
 ---
-# The master key lives in SOPS (secrets/masterkey.enc.yaml), never on the
+# The master key lives in SOPS (ansible/secrets/masterkey.enc.yaml), never on the
 # Publisher except during a resign (docs/runbooks/resign.md). mkfs leaves it
 # in /etc/cvmfs/keys, so:
 #   - the run that has just created the repository (_mkfs changed) finishes,

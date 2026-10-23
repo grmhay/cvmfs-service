@@ -22,7 +22,7 @@ Vocabulary: `CONTEXT.md`. Decisions: `docs/adr/`. Design plan: `plans/0001-nix-o
 | `ansible/roles/` | `cvmfs_client`, `nix_union_store` (union/cache/thin), `cvmfs_nginx_cache`, `cvmfs_publisher`, `nix_builder` |
 | `ansible/playbooks/` | publisher, cache, builders, clients (inventory from NetBox) |
 | `server/minio/` | Bucket policy + the by-hand runbook for the Origin |
-| `secrets/` | SOPS/age ciphertext only |
+| `ansible/secrets/` | SOPS/age ciphertext only; ships inside the collection |
 | `docs/runbooks/`, `docs/spikes/` | Operations; the three go/no-go spikes |
 
 ## Day one

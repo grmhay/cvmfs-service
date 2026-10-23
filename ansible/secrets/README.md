@@ -1,9 +1,12 @@
 # Secrets
 
-Only `*.enc.yaml` is committed. Plaintext shapes are below. Add a key to an existing file with
-`sops --set` on a host with the age key.
+Only `*.enc.yaml` is committed. This directory sits under `ansible/`, so the ciphertext ships inside
+every tagged collection. Plaintext shapes are below. Add a key to an existing file with
+`sops --set` on any host with the age key (ADR 0005: every non-Proxmox host has `sops`, `age` and the
+key at `~/.config/sops/age/keys.txt`).
 
-`publisher.enc.yaml` — decrypted on the control node by the `cvmfs_publisher` role. It is
+`publisher.enc.yaml` — decrypted on the control node by the `cvmfs_publisher` role (Semaphore on
+pi5, template 7; `sops_age_key_file` finds the key even though Semaphore changes `HOME`). It is
 created by `server/minio/create-publisher-key.sh` (server/minio/RUNBOOK.md §2), which writes the
 two MinIO keys; the others are added later with `sops --set`:
 ```yaml

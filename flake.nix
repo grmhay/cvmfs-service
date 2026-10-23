@@ -73,7 +73,7 @@
           promote = mkApp "promote" [ pkgs.nix pkgs.git pkgs.jq pkgs.coreutils ];
           verify-origin = mkApp "verify-origin" [ pkgs.curl pkgs.openssl pkgs.jq pkgs.coreutils pkgs.gnused pkgs.gnugrep ];
           ## Runs on the workstation, not the Publisher: moves the master key
-          ## that mkfs leaves behind into secrets/ (docs/runbooks/publisher-bootstrap.md).
+          ## that mkfs leaves behind into ansible/secrets/ (docs/runbooks/publisher-bootstrap.md).
           masterkey-escrow = mkApp "masterkey-escrow" [ pkgs.sops pkgs.openssh pkgs.coreutils pkgs.gnused ];
         };
 

@@ -55,7 +55,7 @@ mc alias remove filer1                                 # mc keeps the root passw
 ```
 
 `create-publisher-key.sh` creates the `cvmfs-publisher` service account with
-`publisher-policy.json` and writes its keys to `secrets/publisher.enc.yaml`
+`publisher-policy.json` and writes its keys to `ansible/secrets/publisher.enc.yaml`
 (`minio_access_key`, `minio_secret_key`), encrypted for the ops age recipient. The secret
 key is never shown or written in plain text, and only the public recipient is needed, so any
 workstation can run it. Later keys (`nixbuild_private_key`, `deploy_key_private`) are added

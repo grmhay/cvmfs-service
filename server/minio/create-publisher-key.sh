@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Create the Publisher's MinIO service account (server/minio/RUNBOOK.md §2) and
-# write its keys, encrypted, to secrets/publisher.enc.yaml. The secret key goes
+# write its keys, encrypted, to ansible/secrets/publisher.enc.yaml. The secret key goes
 # from mc's JSON output through pipes into sops: it is never printed or written
 # to disk in plain text.
 #
@@ -13,7 +13,7 @@ mc_alias="${1:?$usage}"
 owner="${2:?$usage}"
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 policy=server/minio/publisher-policy.json
-out=secrets/publisher.enc.yaml
+out=ansible/secrets/publisher.enc.yaml
 
 if [ -e "$out" ]; then
   echo "$out already exists; add keys to it with sops --set instead" >&2

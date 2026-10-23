@@ -10,7 +10,7 @@ runbooks. Read `CONTEXT.md` first and use its vocabulary (Repository, Publisher,
 ## Conventions
 - A Profile is a `buildEnv`; collisions must fail the build — never fix one with PATH order
 - Nothing is ever deleted from the Repository (retention: never, year one); retire paths by dropping them from a Profile
-- Secrets: only `*.enc.yaml` is committed (SOPS + age, same recipient as homelab-opscontrolplane); the master key never lives on the Publisher except during `resign`
+- Secrets: only `ansible/secrets/*.enc.yaml` is committed (SOPS + age, same recipient as homelab-opscontrolplane); it ships in the collection and any fleet host with the shared age key decrypts it (ADR 0005). The master key never lives on the Publisher except during `resign`
 - Roles **verify** the Origin bucket; they never create it (`server/minio/RUNBOOK.md`)
 - Host facts (group, channel, mode, quota) come from NetBox custom fields through the dynamic inventory; do not hardcode them in playbooks
 - Publishing goes to `canary`; only `promote` touches `stable`

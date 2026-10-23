@@ -2,16 +2,16 @@
 
 The repository whitelist expires 30 days after signing; clients refuse an expired one. The timer
 `cvmfs-resign.timer` fires on the 1st and 15th but can only sign if the master key is present —
-and it is deliberately **not** kept on the Publisher (secrets/README.md).
+and it is deliberately **not** kept on the Publisher (ansible/secrets/README.md).
 
-The key lives in `secrets/masterkey.enc.yaml` under the `masterkey` field. It gets there once, after
+The key lives in `ansible/secrets/masterkey.enc.yaml` under the `masterkey` field. It gets there once, after
 the Publisher's first playbook run, through `nix run .#masterkey-escrow`
 (docs/runbooks/publisher-bootstrap.md). If that file does not exist yet, do that first.
 
 Every ~3 weeks, from a `nix develop` shell at the checkout root:
 
 ```sh
-sops --decrypt --extract '["masterkey"]' secrets/masterkey.enc.yaml \
+sops --decrypt --extract '["masterkey"]' ansible/secrets/masterkey.enc.yaml \
   | ssh publisher 'sudo install -m 0400 /dev/stdin /etc/cvmfs/keys/nix.hayweb.org.masterkey'
 ssh publisher 'sudo cvmfs_server resign nix.hayweb.org && sudo shred -u /etc/cvmfs/keys/nix.hayweb.org.masterkey'
 curl -s http://cache1.hayweb.org/cvmfs/nix.hayweb.org/.cvmfswhitelist | head -3   # new expiry

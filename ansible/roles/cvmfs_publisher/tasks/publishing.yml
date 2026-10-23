@@ -134,7 +134,7 @@
     msg: >-
       {{ publisher_masterkey_path }} is still on the Publisher. Before the next run of this playbook,
       run `nix run .#masterkey-escrow` from a nix develop shell on the workstation
-      (docs/runbooks/publisher-bootstrap.md), then commit secrets/masterkey.enc.yaml, and the
+      (docs/runbooks/publisher-bootstrap.md), then commit ansible/secrets/masterkey.enc.yaml, and the
       public key printed under "Show the repository public key" as
       ansible/roles/cvmfs_client/files/{{ cvmfs_repository }}.pub.
   when: _masterkey.stat.exists and not (publisher_allow_masterkey | bool)
