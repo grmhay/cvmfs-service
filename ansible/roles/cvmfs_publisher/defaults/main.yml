@@ -4,7 +4,8 @@
 cvmfs_repository: nix.hayweb.org
 publisher_user: publisher
 publisher_home: /home/publisher
-publisher_repo_url: git@github.com:grmhay/cvmfs-service.git
+# Public repo, read-only clone: HTTPS needs no deploy key (nothing on the Publisher pushes).
+publisher_repo_url: https://github.com/grmhay/cvmfs-service.git
 publisher_repo_dir: "{{ publisher_home }}/cvmfs-service"
 publisher_state_dir: "{{ publisher_home }}/.local/state/cvmfs-publish"
 publisher_interval: 5min

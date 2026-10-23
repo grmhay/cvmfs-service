@@ -17,20 +17,16 @@
     owner: "{{ publisher_user }}"
     mode: "0700"
 
-- name: Builder key and deploy key
+- name: Builder key
   become: true
   ansible.builtin.copy:
-    content: "{{ item.content }}"
-    dest: "{{ publisher_home }}/.ssh/{{ item.name }}"
+    content: "{{ publisher_secrets.nixbuild_private_key }}"
+    dest: "{{ publisher_home }}/.ssh/id_nixbuild"
     owner: "{{ publisher_user }}"
     mode: "0600"
-  loop:
-    - { name: id_nixbuild, content: "{{ publisher_secrets.nixbuild_private_key }}" }
-    - { name: id_deploy, content: "{{ publisher_secrets.deploy_key_private }}" }
-  loop_control: { label: "{{ item.name }}" }
   no_log: true
 
-- name: Ssh config for builders and GitHub
+- name: Ssh config for builders
   become: true
   ansible.builtin.template:
     src: ssh_config.j2
@@ -86,8 +82,6 @@
     repo: "{{ publisher_repo_url }}"
     dest: "{{ publisher_repo_dir }}"
     version: master
-    accept_hostkey: true
-    key_file: "{{ publisher_home }}/.ssh/id_deploy"
 
 - name: State dir
   become: true

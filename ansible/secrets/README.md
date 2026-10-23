@@ -15,8 +15,6 @@ minio_secret_key: ""
 nixbuild_private_key: |     # ssh key the Publisher uses to reach pi5/pi6 (ssh-keygen -t ed25519)
   -----BEGIN OPENSSH PRIVATE KEY-----
   ...
-deploy_key_private: |       # read-only deploy key for github.com/grmhay/cvmfs-service
-  ...
 ```
 
 `masterkey.enc.yaml` — the repository **master key** (`/etc/cvmfs/keys/nix.hayweb.org.masterkey`).

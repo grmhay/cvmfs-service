@@ -2,5 +2,5 @@
 # nix_builder: pi5 / pi6 accept remote builds from the Publisher.
 nix_builder_user: nixbuild
 # Public half of ansible/secrets/publisher.enc.yaml:nixbuild_private_key.
-nix_builder_authorized_key: ""
+nix_builder_authorized_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHontlBgUDwny631d9XLSB9RyNKE8zJDMR9W6NkMHTca publisher->nixbuild (cvmfs-service)"
 nix_builder_max_jobs: 4

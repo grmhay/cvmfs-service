@@ -4,7 +4,7 @@
 **master key** must not stay on the Publisher: it lives in SOPS and comes back only for a resign
 (CLAUDE.md, docs/runbooks/resign.md). This is the one-off sequence that gets both keys where they
 belong. Before you start, the Origin bucket must be verified (server/minio/RUNBOOK.md) and
-`ansible/secrets/publisher.enc.yaml` must hold the MinIO keys, the builder key and the deploy key
+`ansible/secrets/publisher.enc.yaml` must hold the MinIO keys and the builder key
 (ansible/secrets/README.md).
 
 The playbook steps normally run as Semaphore template 7 (`cvmfs: publisher`) from the collection
