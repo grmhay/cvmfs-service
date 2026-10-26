@@ -84,9 +84,11 @@ Fleet hosts read the key from the collection, so they get it only from a release
 ```
 
 The guard now passes, and every step is a no-op or converges. From now on, any run that finds the
-master key on the Publisher fails at the guard and names `masterkey-escrow`. The only time the key is
-there on purpose is during a resign; pass `-e publisher_allow_masterkey=true` if you must run the
-playbook then. Nothing has been published yet, so the union is still deferred on this run.
+master key on the Publisher fails at the guard and names `masterkey-escrow`. This run also installs
+the escrowed ciphertext, so the weekly `cvmfs-resign.timer` can now re-sign unattended. Its key is
+only a symlink into tmpfs, which the guard lets through. A key file placed by hand for a break-glass
+resign is the only other time one is there on purpose; pass `-e publisher_allow_masterkey=true` if you
+must run the playbook then (docs/runbooks/resign.md). Nothing has been published yet, so the union is still deferred on this run.
 
 ## 4. First publish, then assemble the union
 

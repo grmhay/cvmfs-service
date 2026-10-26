@@ -6,7 +6,10 @@
 #     and ends with a reminder (publishing.yml);
 #   - any later run fails here until publish/masterkey-escrow.sh has moved
 #     the key into SOPS, unless publisher_allow_masterkey is true (a resign
-#     in progress).
+#     by hand in progress);
+#   - the unattended resign (cvmfs-resign.service) puts a symlink here into
+#     its tmpfs runtime dir for the length of the resign. That is not a key at
+#     rest, so a run during that window passes.
 # First-run sequence: docs/runbooks/publisher-bootstrap.md.
 
 - name: Look for the master key
@@ -15,16 +18,23 @@
     get_checksum: false
   register: _masterkey
 
+- name: Is it the unattended resign's link into tmpfs
+  ansible.builtin.set_fact:
+    _masterkey_is_resign: >-
+      {{ _masterkey.stat.exists and (_masterkey.stat.islnk | default(false))
+         and (_masterkey.stat.lnk_source | default('')).startswith('/run/cvmfs-resign/') }}
+
 - name: Master key is not on the Publisher
   ansible.builtin.assert:
     that: >-
       not _masterkey.stat.exists
+      or (_masterkey_is_resign | bool)
       or (publisher_allow_masterkey | bool)
       or (_mkfs is defined and _mkfs is changed)
     fail_msg: >-
       {{ publisher_masterkey_path }} is on the Publisher. Move it into SOPS first:
       from a nix develop shell on the workstation, run
       `nix run .#masterkey-escrow` (publish/masterkey-escrow.sh), then re-run this playbook.
-      To run with the key in place (a resign in progress), pass -e publisher_allow_masterkey=true.
+      To run with the key in place (a resign by hand in progress), pass -e publisher_allow_masterkey=true.
       See docs/runbooks/publisher-bootstrap.md.
     quiet: true

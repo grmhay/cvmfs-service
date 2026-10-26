@@ -18,7 +18,7 @@ log() { printf '%s reconcile-publish: %s\n' "$(date -Is)" "$*"; }
 
 exec 9>"$lock"
 if ! flock -n 9; then
-  log "another run holds $lock; exiting"
+  log "another publish or a resign holds $lock; exiting"
   exit 0
 fi
 

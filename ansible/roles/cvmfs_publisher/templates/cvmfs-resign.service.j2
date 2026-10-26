@@ -1,9 +1,33 @@
 [Unit]
 Description=Re-sign the {{ cvmfs_repository }} whitelist (expires after 30 days)
+Documentation=https://github.com/grmhay/cvmfs-service/blob/master/docs/runbooks/resign.md
+Wants=network-online.target
+After=network-online.target
+# The age key is on filer1's NFS export (ADR 0005).
+RequiresMountsFor={{ publisher_resign_age_key_file }}
 
 [Service]
 Type=oneshot
-# The master key is NOT on this host (ansible/secrets/README.md). This unit only
-# re-signs when it has been placed by docs/runbooks/resign.md; otherwise it
-# exits non-zero so the failure is visible in Loki.
-ExecStart=/bin/bash -c 'test -f /etc/cvmfs/keys/{{ cvmfs_repository }}.masterkey && cvmfs_server resign {{ cvmfs_repository }}'
+# The plaintext master key lives only here (tmpfs, 0700), removed by systemd
+# when the unit stops. /usr/local/sbin/cvmfs-resign links it in at
+# {{ publisher_masterkey_path }} for cvmfs_server and removes the link on
+# success and failure; ExecStopPost repeats that after a kill or timeout.
+# Before escrow (no {{ publisher_resign_secret_dest }}) it fails, naming
+# masterkey-escrow. It holds the publish reconciler's lock throughout, waiting
+# up to {{ publisher_resign_lock_wait }}s for a running publish, so a resign
+# never lands inside a transaction. Failures go to the journal (and Loki).
+RuntimeDirectory=cvmfs-resign
+RuntimeDirectoryMode=0700
+UMask=0077
+Environment=CVMFS_REPOSITORY={{ cvmfs_repository }}
+Environment=RESIGN_SECRET={{ publisher_resign_secret_dest }}
+Environment=RESIGN_MASTERKEY={{ publisher_masterkey_path }}
+Environment=SOPS_AGE_KEY_FILE={{ publisher_resign_age_key_file }}
+Environment=RESIGN_SOPS_USER={{ publisher_resign_sops_user }}
+Environment=RESIGN_LOCK={{ publisher_lock_file }}
+Environment=RESIGN_LOCK_WAIT={{ publisher_resign_lock_wait }}
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/usr/local/sbin/cvmfs-resign
+ExecStopPost=/usr/local/sbin/cvmfs-resign cleanup
+# The lock wait plus the resign itself.
+TimeoutStartSec=4h
