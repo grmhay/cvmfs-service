@@ -75,12 +75,22 @@
           ## Runs on the workstation, not the Publisher: moves the master key
           ## that mkfs leaves behind into ansible/secrets/ (docs/runbooks/publisher-bootstrap.md).
           masterkey-escrow = mkApp "masterkey-escrow" [ pkgs.sops pkgs.openssh pkgs.coreutils pkgs.gnused ];
+          ## Reads a .cvmfswhitelist on stdin and prints its expiry (#20). The
+          ## probe on skyline (homelab-opscontrolplane) runs a vendored copy.
+          whitelist-expiry = mkApp "whitelist-expiry" [ pkgs.gawk pkgs.coreutils ];
         };
 
         ## `nix flake check` builds every Profile for the host system and
         ## evaluates them for the other one (CI has no aarch64 builders;
         ## the Publisher does the real aarch64 build before publishing).
-        checks = profiles;
+        ## The whitelist parser's tests run with busybox alone on PATH, because
+        ## the probe container that runs it has no GNU userland either.
+        checks = profiles // {
+          whitelist-expiry = pkgs.runCommand "whitelist-expiry-tests" { } ''
+            PATH=${pkgs.busybox}/bin ROOT=${self} sh ${self}/tests/whitelist-expiry.sh
+            touch $out
+          '';
+        };
       })
     // flake-utils.lib.eachDefaultSystem (system:
       let pkgs = import nixpkgs { inherit system; };
