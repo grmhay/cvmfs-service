@@ -91,6 +91,19 @@
     owner: "{{ publisher_user }}"
     mode: "0755"
 
+# Shared by the publish reconciler and the resign (#19); it must exist and be
+# the publisher's before either runs, or a root-made file locks publish out.
+- name: Publish lock file
+  become: true
+  ansible.builtin.file:
+    path: "{{ publisher_lock_file }}"
+    state: touch
+    owner: "{{ publisher_user }}"
+    group: "{{ publisher_user }}"
+    mode: "0644"
+    access_time: preserve
+    modification_time: preserve
+
 # Unattended resign (#19). The ciphertext is installed once it is in the
 # collection; until then the unit fails and names masterkey-escrow.
 - name: Escrowed master key in the collection

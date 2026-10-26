@@ -13,7 +13,9 @@ Type=oneshot
 # {{ publisher_masterkey_path }} for cvmfs_server and removes the link on
 # success and failure; ExecStopPost repeats that after a kill or timeout.
 # Before escrow (no {{ publisher_resign_secret_dest }}) it fails, naming
-# masterkey-escrow. Failures go to the journal (and Loki).
+# masterkey-escrow. It holds the publish reconciler's lock throughout, waiting
+# up to {{ publisher_resign_lock_wait }}s for a running publish, so a resign
+# never lands inside a transaction. Failures go to the journal (and Loki).
 RuntimeDirectory=cvmfs-resign
 RuntimeDirectoryMode=0700
 UMask=0077
@@ -22,7 +24,10 @@ Environment=RESIGN_SECRET={{ publisher_resign_secret_dest }}
 Environment=RESIGN_MASTERKEY={{ publisher_masterkey_path }}
 Environment=SOPS_AGE_KEY_FILE={{ publisher_resign_age_key_file }}
 Environment=RESIGN_SOPS_USER={{ publisher_resign_sops_user }}
+Environment=RESIGN_LOCK={{ publisher_lock_file }}
+Environment=RESIGN_LOCK_WAIT={{ publisher_resign_lock_wait }}
 Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ExecStart=/usr/local/sbin/cvmfs-resign
 ExecStopPost=/usr/local/sbin/cvmfs-resign cleanup
-TimeoutStartSec=30min
+# The lock wait plus the resign itself.
+TimeoutStartSec=4h

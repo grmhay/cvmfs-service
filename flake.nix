@@ -82,9 +82,9 @@
         ## the Publisher does the real aarch64 build before publishing).
         checks = profiles // {
           ## The Publisher's unattended resign wrapper (#19), against real
-          ## sops/age and a stub cvmfs_server: success, failures, cleanup.
+          ## sops/age and a stub cvmfs_server: success, failures, cleanup, the publish lock.
           resign-wrapper = pkgs.runCommand "resign-wrapper-test"
-            { nativeBuildInputs = [ pkgs.bash pkgs.coreutils pkgs.gnugrep pkgs.gnused pkgs.diffutils pkgs.sops pkgs.age ]; }
+            { nativeBuildInputs = [ pkgs.bash pkgs.coreutils pkgs.gnugrep pkgs.gnused pkgs.diffutils pkgs.sops pkgs.age pkgs.util-linux ]; }
             ''
               cp ${./ansible/roles/cvmfs_publisher/files/cvmfs-resign.sh} cvmfs-resign.sh
               cp ${./tests/cvmfs-resign-test.sh} cvmfs-resign-test.sh

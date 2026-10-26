@@ -19,6 +19,9 @@
 #   RESIGN_SECRET       masterkey.enc.yaml on this host (default /etc/cvmfs-resign/masterkey.enc.yaml)
 #   RESIGN_MASTERKEY    where cvmfs_server looks (default /etc/cvmfs/keys/<repo>.masterkey)
 #   SOPS_AGE_KEY_FILE   the shared age identity on /shared (ADR 0005)
+#   RESIGN_LOCK         the publish reconciler's flock file (required; the role
+#                       creates it, owned by the publisher user)
+#   RESIGN_LOCK_WAIT    seconds to wait for a running publish (default 12600)
 #   RESIGN_SOPS_USER    run sops as this user (one that can read SOPS_AGE_KEY_FILE
 #                       on the NFS export); empty: run it as root
 set -euo pipefail
@@ -28,6 +31,8 @@ run="${RUNTIME_DIRECTORY:?set by systemd from RuntimeDirectory=}"
 secret="${RESIGN_SECRET:-/etc/cvmfs-resign/masterkey.enc.yaml}"
 key="${RESIGN_MASTERKEY:-/etc/cvmfs/keys/$repo.masterkey}"
 sops_user="${RESIGN_SOPS_USER:-}"
+lock="${RESIGN_LOCK:?the publish lock file (publisher_lock_file)}"
+lock_wait="${RESIGN_LOCK_WAIT:-12600}"
 plain="$run/masterkey"
 
 log() { printf 'cvmfs-resign[%s]: %s\n' "$repo" "$*" >&2; }
@@ -60,6 +65,14 @@ if [ "${1:-}" = cleanup ]; then
 fi
 
 [ -f "$secret" ] || die "no $secret: the master key has not been escrowed yet. Run \`nix run .#masterkey-escrow\` (docs/runbooks/publisher-bootstrap.md), commit ansible/secrets/masterkey.enc.yaml, release, and re-run publisher.yml"
+
+# Hold the publish reconciler's lock for the whole resign, so a resign never
+# runs inside a publish transaction (and the reconciler skips its tick while
+# we hold it). Opened read-only: the file is the publisher user's, and
+# creating it here as root would lock that user out of it.
+[ -f "$lock" ] || die "no publish lock file $lock: re-run publisher.yml"
+exec 9<"$lock"
+flock -w "$lock_wait" 9 || die "a publish still holds the publish lock $lock after ${lock_wait}s; not resigning"
 
 if [ -L "$key" ]; then
   log "removing a stale $key symlink (a run that was killed)"

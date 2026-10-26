@@ -37,6 +37,16 @@ exit "${STUB_RC:-0}"
 EOF
 chmod +x "$work/bin/cvmfs_server"
 
+# The publish reconciler's lock, which the role creates (owned by publisher).
+: > "$work/publish.lock"
+
+# Hold the publish lock in the background for $1 seconds, as a running publish would.
+hold_lock() {
+  flock "$work/publish.lock" sleep "$1" &
+  holder=$!
+  sleep 0.3
+}
+
 # One case = a fresh keys dir, runtime dir and stub log. Sets $rc and $err.
 run_case() {
   case_dir="$work/case-$1"; shift
@@ -49,6 +59,7 @@ run_case() {
     RESIGN_MASTERKEY="$case_dir/keys/nix.example.org.masterkey" \
     RUNTIME_DIRECTORY="$case_dir/run" \
     SOPS_AGE_KEY_FILE="${AGE_KEY:-$work/age.txt}" \
+    RESIGN_LOCK="${LOCK:-$work/publish.lock}" RESIGN_LOCK_WAIT="${LOCK_WAIT:-5}" \
     STUB_LOG="$case_dir/log" STUB_RC="${STUB_RC:-0}" \
     "$wrapper" "$@" 2> "$case_dir/stderr" || rc=$?
   err="$(cat "$case_dir/stderr")"
@@ -124,6 +135,31 @@ pre_existing cleanup-hand
 run_case cleanup-hand cleanup
 check "exits 0" [ "$rc" -eq 0 ]
 check "leaves that file alone" grep -qx hand-placed "$case_dir/keys/nix.example.org.masterkey"
+
+echo "# a publish holds the lock for longer than the resign waits"
+hold_lock 5
+LOCK_WAIT=1 run_case lock-held
+wait "$holder"
+check "fails" [ "$rc" -ne 0 ]
+check "says a publish holds the lock" grep -q 'publish lock' <<<"$err"
+check "does not call cvmfs_server" not_called
+check "leaves no master key" no_key_left
+check "leaves the runtime dir empty" run_dir_empty
+
+echo "# a publish finishes while the resign waits"
+hold_lock 1
+LOCK_WAIT=10 run_case lock-wait
+wait "$holder"
+check "exits 0" [ "$rc" -eq 0 ]
+check "runs cvmfs_server resign <repo>" grep -qx 'resign nix.example.org' "$case_dir/log/calls"
+check "leaves no master key" no_key_left
+
+echo "# the publish lock file is missing"
+LOCK="$work/absent.lock" run_case no-lock
+check "fails" [ "$rc" -ne 0 ]
+check "names the lock file" grep -q absent.lock <<<"$err"
+check "does not call cvmfs_server" not_called
+check "does not create it" [ ! -e "$work/absent.lock" ]
 
 if [ "$fails" -ne 0 ]; then echo "$fails failed"; exit 1; fi
 echo "all passed"

@@ -9,16 +9,22 @@ Publisher re-signs it unattended (#19): `cvmfs-resign.timer` fires weekly (Monda
 `cvmfs-resign.service` runs `/usr/local/sbin/cvmfs-resign` (the role's
 `files/cvmfs-resign.sh`) as root:
 
-1. It reads the escrowed ciphertext `/etc/cvmfs-resign/masterkey.enc.yaml` (root only). The role
+1. It takes the publish reconciler's lock (`publisher_lock_file`,
+   `~publisher/.local/state/cvmfs-publish/publish.lock`) and holds it to the end, so a resign never
+   lands inside a publish transaction. If a publish is running it waits up to
+   `publisher_resign_lock_wait` (3.5 h) and then fails without decrypting anything; while it holds
+   the lock the reconciler skips its 5-minute tick. A transaction opened **by hand** (outside
+   `cvmfs-publish.service`) does not take the lock, so don't leave one open over the Monday 03:00 run.
+2. It reads the escrowed ciphertext `/etc/cvmfs-resign/masterkey.enc.yaml` (root only). The role
    installs it from the collection's `secrets/masterkey.enc.yaml` once that exists.
-2. `sops` decrypts the `masterkey` field with the shared age key on `/shared` (ADR 0005), run as
+3. `sops` decrypts the `masterkey` field with the shared age key on `/shared` (ADR 0005), run as
    `publisher_resign_sops_user` (`ansible`) because the export may squash root. The unit has
    `RequiresMountsFor=` on the key file.
-3. The plaintext goes only into the unit's `RuntimeDirectory`, `/run/cvmfs-resign` (tmpfs, 0700).
+4. The plaintext goes only into the unit's `RuntimeDirectory`, `/run/cvmfs-resign` (tmpfs, 0700).
    `/etc/cvmfs/keys/nix.hayweb.org.masterkey` becomes a **symlink** to it, because `cvmfs_server`
    reads the key at that fixed path.
-4. `cvmfs_server resign nix.hayweb.org` signs a new 30-day whitelist and uploads it to the Origin.
-5. On success **and** on failure, the wrapper removes the symlink and shreds the tmpfs copy.
+5. `cvmfs_server resign nix.hayweb.org` signs a new 30-day whitelist and uploads it to the Origin.
+6. On success **and** on failure, the wrapper removes the symlink and shreds the tmpfs copy.
    `ExecStopPost` (`cvmfs-resign cleanup`) repeats that after a kill or a timeout, and systemd removes
    the runtime dir when the unit stops. The master key is never at rest in plaintext.
 

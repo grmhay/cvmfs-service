@@ -8,6 +8,9 @@ publisher_home: /home/publisher
 publisher_repo_url: https://github.com/grmhay/cvmfs-service.git
 publisher_repo_dir: "{{ publisher_home }}/cvmfs-service"
 publisher_state_dir: "{{ publisher_home }}/.local/state/cvmfs-publish"
+# flock held by the publish reconciler for a whole run, and by the resign, so
+# the two never overlap (#19). Owned by publisher_user; the role creates it.
+publisher_lock_file: "{{ publisher_state_dir }}/publish.lock"
 publisher_interval: 5min
 publisher_timer_enabled: false    # enable after the first manual publish succeeds
 # Relative to the role, so it resolves inside a vendored collection as well as
@@ -71,3 +74,5 @@ publisher_resign_age_key_file: /shared/ansible-config/sops/age/keys.txt
 # group sopsusers 0640. Empty: run sops as root.
 publisher_resign_sops_user: ansible
 publisher_resign_calendar: "Mon *-*-* 03:00:00"
+# How long a resign waits for a running publish (cvmfs-publish.service may run 3h).
+publisher_resign_lock_wait: 12600
