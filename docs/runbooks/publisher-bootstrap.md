@@ -159,6 +159,21 @@ through the run output:
 The repository exists, so the next run will not repeat mkfs, and the guard will stop it. Do step 2,
 then re-run.
 
+## If mkfs itself fails partway
+
+If "Create the repository" fails (mkfs prints `fail! (cannot init repo)`), mkfs has already written
+`/etc/cvmfs/repositories.d/nix.hayweb.org` and a master key, so the next run skips mkfs (`creates:`)
+and the guard stops it. Nothing has been published, so throw the half-made repository away rather
+than escrowing its key:
+
+```sh
+ssh publisher sudo cvmfs_server rmfs -f nix.hayweb.org
+ssh publisher sudo ls /etc/cvmfs/repositories.d/ /etc/cvmfs/keys/   # both free of nix.hayweb.org
+```
+
+Check the bucket is still empty (`mc ls --recursive <alias>/cvmfs`; mkfs needs an empty bucket), and
+empty it by hand if anything landed. Then fix the cause and run step 1 again.
+
 ## The two mounts of the repository
 
 After the first run the Publisher has two mounts of `nix.hayweb.org`:

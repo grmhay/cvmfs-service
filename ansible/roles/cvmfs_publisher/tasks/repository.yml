@@ -86,12 +86,17 @@
     _dns_probe.rc != 0 or
     (_dns_probe.stdout_lines | select('match', '^[0-9.]+$') | list | length == 0)
 
+# Readable by the repository owner: mkfs -o and every later transaction run
+# the S3 uploader as publisher_user, which otherwise sees no CVMFS_S3_HOST
+# ("Failed to parse CVMFS_S3_HOST", template 7 task #217).
 - name: S3 backend config
   become: true
   ansible.builtin.template:
     src: s3.conf.j2
     dest: /etc/cvmfs/s3.conf
-    mode: "0600"
+    owner: root
+    group: "{{ publisher_user }}"
+    mode: "0640"
   no_log: true
 
 - name: Create the repository (once; never re-run against a populated bucket)
