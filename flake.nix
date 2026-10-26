@@ -7,8 +7,10 @@
 
     ## Service packages enter the fleet as pinned flake inputs (ADR 0001).
     ## Renovate bumps the tag; the publisher builds and publishes the result.
-    ## Enabled in phase 3:
-    # vm-service.url = "github:grmhay/vm-service/v0.1.0";
+    ## vm-service keeps its own nixpkgs: its build runs its lint gate, and our
+    ## newer ruff fails v0.1.0 on rules it did not ship with.
+    vm-service.url = "github:grmhay/vm-service/v0.1.0";
+    vm-service.inputs.flake-utils.follows = "flake-utils";
   };
 
   outputs = { self, nixpkgs, flake-utils, ... }@inputs:
@@ -80,7 +82,12 @@
         ## `nix flake check` builds every Profile for the host system and
         ## evaluates them for the other one (CI has no aarch64 builders;
         ## the Publisher does the real aarch64 build before publishing).
-        checks = profiles;
+        checks = profiles // {
+          ## The docker-host Profile carries vm-service's CLI and it runs.
+          docker-host-vm-service = pkgs.runCommand "docker-host-vm-service" { } ''
+            ${profiles.profile-docker-host}/bin/vm_service --help > $out
+          '';
+        };
       })
     // flake-utils.lib.eachDefaultSystem (system:
       let pkgs = import nixpkgs { inherit system; };
