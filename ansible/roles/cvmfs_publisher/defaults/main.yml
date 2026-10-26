@@ -58,3 +58,16 @@ publisher_public_key_fetch_dest: ""
 # (tasks/masterkey_guard.yml, docs/runbooks/publisher-bootstrap.md).
 publisher_masterkey_path: "/etc/cvmfs/keys/{{ cvmfs_repository }}.masterkey"
 publisher_allow_masterkey: false
+
+# Unattended resign (cvmfs-resign.service, weekly; #19, docs/runbooks/resign.md).
+# The escrowed ciphertext ships in the collection; once it exists the role
+# installs it root-only, and the unit decrypts it with the shared age key on
+# /shared (ADR 0005). The plaintext lives only in /run/cvmfs-resign (tmpfs),
+# behind a symlink at publisher_masterkey_path for the length of the resign.
+publisher_masterkey_secret_file: "{{ role_path }}/../../secrets/masterkey.enc.yaml"
+publisher_resign_secret_dest: /etc/cvmfs-resign/masterkey.enc.yaml
+publisher_resign_age_key_file: /shared/ansible-config/sops/age/keys.txt
+# sops runs as this user: filer1's export may squash root, and the key file is
+# group sopsusers 0640. Empty: run sops as root.
+publisher_resign_sops_user: ansible
+publisher_resign_calendar: "Mon *-*-* 03:00:00"
