@@ -5,12 +5,12 @@ runbooks. Read `CONTEXT.md` first and use its vocabulary (Repository, Publisher,
 
 ## Environment
 - Work inside `nix develop` (ansible, ansible-lint, sops, age, mc, shellcheck, yamllint)
-- Validate before committing: `nix flake check`, `shellcheck publish/*.sh spikes/*.sh server/minio/*.sh`, `(cd ansible && ansible-lint --offline playbooks/ roles/)`
+- Validate before committing: `nix flake check`, `shellcheck publish/*.sh spikes/*.sh server/minio/*.sh tests/*.sh ansible/roles/*/files/*.sh`, `(cd ansible && ansible-lint --offline playbooks/ roles/)`
 
 ## Conventions
 - A Profile is a `buildEnv`; collisions must fail the build — never fix one with PATH order
 - Nothing is ever deleted from the Repository (retention: never, year one); retire paths by dropping them from a Profile
-- Secrets: only `ansible/secrets/*.enc.yaml` is committed (SOPS + age, same recipient as homelab-opscontrolplane); it ships in the collection and any fleet host with the shared age key decrypts it (ADR 0005). The master key never lives on the Publisher except during `resign`
+- Secrets: only `ansible/secrets/*.enc.yaml` is committed (SOPS + age, same recipient as homelab-opscontrolplane); it ships in the collection and any fleet host with the shared age key decrypts it (ADR 0005). The master key is never at rest in plaintext on the Publisher: `cvmfs-resign.service` decrypts it weekly into tmpfs and removes it, success or failure (`docs/runbooks/resign.md`; the manual resign is break-glass)
 - Roles **verify** the Origin bucket; they never create it (`server/minio/RUNBOOK.md`)
 - Host facts (group, channel, mode, quota) come from NetBox custom fields through the dynamic inventory; do not hardcode them in playbooks
 - Publishing goes to `canary`; only `promote` touches `stable`

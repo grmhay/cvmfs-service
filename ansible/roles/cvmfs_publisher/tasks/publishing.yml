@@ -91,6 +91,57 @@
     owner: "{{ publisher_user }}"
     mode: "0755"
 
+# Unattended resign (#19). The ciphertext is installed once it is in the
+# collection; until then the unit fails and names masterkey-escrow.
+- name: Escrowed master key in the collection
+  delegate_to: localhost
+  become: false
+  run_once: true
+  ansible.builtin.stat:
+    path: "{{ publisher_masterkey_secret_file }}"
+  register: _masterkey_secret
+
+- name: Resign secret directory (root only)
+  become: true
+  ansible.builtin.file:
+    path: "{{ publisher_resign_secret_dest | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Escrowed master key (ciphertext, root only)
+  become: true
+  ansible.builtin.copy:
+    src: "{{ publisher_masterkey_secret_file }}"
+    dest: "{{ publisher_resign_secret_dest }}"
+    owner: root
+    group: root
+    mode: "0400"
+  when: _masterkey_secret.stat.exists
+
+- name: No escrowed master key yet
+  ansible.builtin.debug:
+    msg: >-
+      {{ publisher_masterkey_secret_file }} is not in this collection yet, so cvmfs-resign.service
+      will fail until it is: run `nix run .#masterkey-escrow`, commit it, release, and re-run.
+  when: not _masterkey_secret.stat.exists
+
+- name: The resign's sops user exists
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ publisher_resign_sops_user }}"
+  when: publisher_resign_sops_user | length > 0
+
+- name: Resign wrapper
+  become: true
+  ansible.builtin.copy:
+    src: cvmfs-resign.sh
+    dest: /usr/local/sbin/cvmfs-resign
+    owner: root
+    group: root
+    mode: "0755"
+
 - name: Resign and publish units
   become: true
   ansible.builtin.template:
@@ -131,4 +182,4 @@
       (docs/runbooks/publisher-bootstrap.md), then commit ansible/secrets/masterkey.enc.yaml, and the
       public key printed under "Show the repository public key" as
       ansible/roles/cvmfs_client/files/{{ cvmfs_repository }}.pub.
-  when: _masterkey.stat.exists and not (publisher_allow_masterkey | bool)
+  when: _masterkey.stat.exists and not (_masterkey_is_resign | bool) and not (publisher_allow_masterkey | bool)
