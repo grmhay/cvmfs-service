@@ -70,3 +70,33 @@ If you really must run the playbook in that window, pass `-e publisher_allow_mas
 If the shred step did not run (for example, the resign failed), remove the key by hand before you leave:
 `ssh publisher 'sudo shred -u /etc/cvmfs/keys/nix.hayweb.org.masterkey'`. The copy in SOPS is
 unchanged, so there is nothing to escrow again.
+
+## Expiry alert
+
+Grafana on skyline alerts before the whitelist runs out, so a resign that keeps failing gets noticed
+(#20). The alert lives in homelab-opscontrolplane, not in this collection:
+
+- **Probe:** the `cvmfs-whitelist-probe` stack on skyline fetches
+  `http://cache1.hayweb.org/cvmfs/nix.hayweb.org/.cvmfswhitelist` every 15 minutes, the way clients
+  see it, and logs one logfmt line: `status=ok expires=… expires_epoch=… days_left=…`, or
+  `status=error reason=fetch_failed|no_expiry|bad_expiry`. alloy ships the line to pi2's Loki.
+- **Parser:** `publish/whitelist-expiry.sh` here. The probe runs a vendored copy, so if you change
+  the parser, copy it to `environments/prod/cvmfs-whitelist-probe/whitelist-expiry.sh` in the ops repo.
+  Its tests are `tests/whitelist-expiry.sh` and run with busybox under `nix flake check`.
+- **Rules:** `environments/prod/grafana/provisioning/alerting/cvmfs-whitelist.yaml` in the ops repo,
+  folder `cvmfs`:
+  - *CVMFS whitelist expires in under 10 days*: the lowest `days_left` of the last hour is under 10.
+  - *CVMFS whitelist probe has no good reading*: no `status=ok` line in the last hour. It fires on a
+    missing or unparsable whitelist, a failed fetch, a stopped probe and a Loki error. No data counts
+    as a failure.
+
+With a weekly timer and a 30-day whitelist, the expiry alert fires after two weekly resigns in a row
+have failed, with at least one try left. When it fires, read the timer's last runs ("Check it"), fix the
+cause and start the unit, or resign by hand (break-glass). When the probe alert fires, the probe's own lines say why:
+`{container="cvmfs-whitelist-probe"}` in Grafana Explore. Check the expiry by hand from a `nix develop` shell:
+
+```sh
+curl -s http://cache1.hayweb.org/cvmfs/nix.hayweb.org/.cvmfswhitelist | nix run .#whitelist-expiry
+```
+
+The `E` line holds the expiry (UTC). It is the second line, before the `N<repository>` line, not after it.
