@@ -79,8 +79,43 @@
 - name: Flush handlers so the daemon restarts on the union
   ansible.builtin.meta: flush_handlers
 
+- name: Look for the check path
+  ansible.builtin.stat:
+    path: "{{ nix_union_check_path }}"
+  register: _check_path
+  when: nix_union_check_path | length > 0
+
+# The Group Profile is missing until it is published for this system on this
+# Channel: stable fills only on promote, so a bootstrap run lands here. Any
+# published Profile lives only in the Lower Store too, so check one of those.
+- name: Find another published Profile when the check path is missing
+  ansible.builtin.command: >-
+    find {{ cvmfs_client_mountpoint }}/profiles -mindepth 3 -maxdepth 3 -type l -print -quit
+  register: _any_profile
+  changed_when: false
+  when: nix_union_check_path | length > 0 and not _check_path.stat.exists
+
+- name: Some Profile is published
+  ansible.builtin.assert:
+    that: _any_profile.stdout | length > 0
+    fail_msg: >-
+      Neither {{ nix_union_check_path }} nor any other Profile under
+      {{ cvmfs_client_mountpoint }}/profiles exists, so nothing can show the overlay serves the
+      Lower Store. Publish first (docs/runbooks/publisher-bootstrap.md, step 4).
+    quiet: true
+  when: _any_profile is not skipped
+
+- name: Note that this host's Group Profile is not published yet
+  ansible.builtin.debug:
+    msg: >-
+      {{ nix_union_check_path }} is not published yet (promote fills stable); checked
+      {{ _any_profile.stdout }} instead.
+  when: _any_profile is not skipped
+
 # A path that exists only in the Lower Store is valid only through the overlay.
 - name: The daemon serves the Lower Store through the overlay
-  ansible.builtin.command: nix path-info --store daemon {{ nix_union_check_path }}
+  ansible.builtin.command: >-
+    nix path-info --store daemon
+    {{ _any_profile.stdout if _any_profile is not skipped else nix_union_check_path }}
   changed_when: false
   when: nix_union_check_path | length > 0
