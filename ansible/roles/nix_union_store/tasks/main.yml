@@ -114,6 +114,33 @@
   ansible.builtin.include_tasks: lower_store.yml
   when: cvmfs_nix_mode == "union"
 
+# nix.conf sends every client to store = daemon, and the daemon reads it too:
+# only union.yml's drop-in points the daemon elsewhere. Until the union is
+# assembled the daemon must open the plain local store itself, or it connects
+# to its own socket, worker after worker, until the host runs out of memory.
+# union.yml replaces this drop-in once the Lower Store is there.
+- name: Drop-in directory for the deferred daemon
+  become: true
+  ansible.builtin.file:
+    path: /etc/systemd/system/nix-daemon.service.d
+    state: directory
+    mode: "0755"
+  when: cvmfs_nix_mode == "union" and (_nix_union_deferred | default(false))
+
+- name: Run nix-daemon on the local store while the union is deferred
+  become: true
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/nix-daemon.service.d/union-store.conf
+    mode: "0644"
+    content: |
+      [Service]
+      ExecStart=
+      ExecStart=@/nix/var/nix/profiles/default/bin/nix-daemon nix-daemon --daemon --option store local
+  notify:
+    - Reload systemd
+    - Restart nix-daemon
+  when: cvmfs_nix_mode == "union" and (_nix_union_deferred | default(false))
+
 - name: Union-store assembly
   ansible.builtin.include_tasks: union.yml
   when: cvmfs_nix_mode == "union" and not (_nix_union_deferred | default(false))
