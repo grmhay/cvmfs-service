@@ -9,10 +9,15 @@
 #     the key is committed, and fail if a committed key differs from it.
 # How the key gets committed: docs/runbooks/publisher-bootstrap.md.
 
+# Built from role_path, not first_found: on ansible-core 2.20 (the Semaphore
+# runner) first_found with skip=true returned [] for a key that was there, so
+# the Publisher skipped the comparison and fleet hosts would fail as if the key
+# were missing (task #220). Same pattern as publisher_secrets_file (#18).
 - name: Find the committed repository public key (control node)
   ansible.builtin.set_fact:
-    # role files/ first; skip: an empty result instead of an error
-    _cvmfs_committed_key: "{{ lookup('ansible.builtin.first_found', cvmfs_public_key_file, skip=true) }}"
+    _cvmfs_committed_key: >-
+      {{ (role_path ~ '/files/' ~ cvmfs_public_key_file)
+         if (role_path ~ '/files/' ~ cvmfs_public_key_file) is file else '' }}
 
 - name: The committed repository public key is there
   ansible.builtin.assert:

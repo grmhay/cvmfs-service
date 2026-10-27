@@ -14,7 +14,8 @@
 # script only verifies and removes, so a run that died before the delete can
 # be repeated. Prints no secret values and commits nothing.
 #
-# Usage: masterkey-escrow.sh
+# Usage: masterkey-escrow.sh   (`nix run .#masterkey-escrow` sets CVMFS_REPOSITORY)
+#   CVMFS_REPOSITORY     repository name, e.g. nix.hayweb.org (required)
 #   PUBLISHER_HOST       ssh destination of the Publisher (default: publisher)
 #   PUBLISHER_MASTERKEY  key path on the Publisher (default: /etc/cvmfs/keys/<repo>.masterkey)
 set -euo pipefail

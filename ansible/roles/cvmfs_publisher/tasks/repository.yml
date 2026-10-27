@@ -16,7 +16,10 @@
   ansible.builtin.apt:
     # No apache2: with an S3 upstream, mkfs, publish and the mount work without
     # it (spike S3), and it would hold port 80 if the Cache shares the host.
-    name: [cvmfs, cvmfs-server, git, sqlite3]
+    # acl: Ansible needs setfacl to become publisher_user (the clone in
+    # tasks/publishing); without it the run fails at "Clone this repo"
+    # with "chmod: invalid mode: 'A+user:publisher:rx:allow'" (task #220).
+    name: [acl, cvmfs, cvmfs-server, git, sqlite3]
     state: present
     update_cache: true
 
