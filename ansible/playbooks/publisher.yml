@@ -21,6 +21,9 @@
 # Cache like every other host, and the Union Store is built on it (#15, ADR 0004).
 - name: Publisher (Stratum 0)
   hosts: nix_publisher
+  # A later failure must not drop a queued restart (nix-daemon on a new
+  # nix.conf): the next run sees no change and never notifies again.
+  force_handlers: true
   vars:
     cvmfs_client_mountpoint: "/cvmfs-client/{{ cvmfs_repository }}"
     # mkfs wrote the key here: verify it, do not ship the committed copy (#17)

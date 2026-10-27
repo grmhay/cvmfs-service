@@ -2,6 +2,9 @@
 # pi5, pi6 — NetBox tag nix-builder.
 - name: Remote builders (aarch64)
   hosts: tag_nix_builder
+  # A later failure must not drop a queued restart (nix-daemon on a new
+  # nix.conf): the next run sees no change and never notifies again.
+  force_handlers: true
   roles:
     - cvmfs_client
     - role: nix_union_store

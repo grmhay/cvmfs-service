@@ -1,5 +1,8 @@
 ---
 - name: CVMFS nginx cache
   hosts: nix_cache
+  # A later failure must not drop a queued restart (nix-daemon on a new
+  # nix.conf): the next run sees no change and never notifies again.
+  force_handlers: true
   roles:
     - cvmfs_nginx_cache
