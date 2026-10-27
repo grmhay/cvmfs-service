@@ -4,4 +4,7 @@ Host {{ b.host }}
     User {{ nix_builder_user }}
     IdentityFile ~/.ssh/id_nixbuild
     IdentitiesOnly yes
+    # The daemon connects non-interactively, so an unknown host key fails the
+    # build. Record it on first contact (LAN builders); a changed key still fails.
+    StrictHostKeyChecking accept-new
 {% endfor %}
