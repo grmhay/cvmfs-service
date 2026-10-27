@@ -92,8 +92,24 @@ must run the playbook then (docs/runbooks/resign.md). Nothing has been published
 
 ## 4. First publish, then assemble the union
 
-On the Publisher, run the reconciler once by hand. It publishes `master` to `canary`
-(publish/publish.sh), building aarch64 on the Builders:
+A full publish builds aarch64 on the Builders as `nixbuild`, which `cvmfs: builders`
+(`builders.yml`) creates. That playbook also mounts the Repository and assembles the union on
+pi5 and pi6, so it fails at "The Lower Store is there" until something is published. Break the
+loop with an x86_64-only first publish, by hand as `publisher` on the Publisher. `sudo -iu`
+opens a new shell, so paste the rest after it:
+
+```sh
+sudo -iu publisher
+```
+
+```sh
+cd ~/cvmfs-service
+FLEET_SYSTEMS=x86_64-linux nix run .#publish
+```
+
+That creates the Lower Store. It records no published revision, so the reconciler still does a
+full publish later. Once the TTL below has passed, run `cvmfs: builders`, then publish everything
+through the reconciler (`master` to `canary`, publish/publish.sh):
 
 ```sh
 sudo systemctl start cvmfs-publish.service
