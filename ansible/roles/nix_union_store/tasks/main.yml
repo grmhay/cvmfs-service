@@ -24,6 +24,39 @@
     state: present
   when: cvmfs_nix_mode != "thin"
 
+- name: Look for the Nix installer's receipt
+  ansible.builtin.stat:
+    path: /nix/receipt.json
+  register: _nix_receipt
+  when: cvmfs_nix_mode != "thin"
+
+# The installer refuses a host that already has a Nix it did not install
+# (e.g. Debian's nix-bin), and the role must not remove one by itself.
+- name: Find a Nix the pinned installer did not install
+  ansible.builtin.shell: |
+    set -o pipefail
+    nix=$(command -v nix || command -v nix-env || true)
+    [ -n "$nix" ] || exit 0
+    real=$(readlink -f "$nix")
+    echo "$real ($(dpkg -S "$real" 2>/dev/null | cut -d: -f1 || rpm -qf "$real" 2>/dev/null || echo 'no package'))"
+  args:
+    executable: /bin/bash
+  register: _foreign_nix
+  changed_when: false
+  when: cvmfs_nix_mode != "thin" and not _nix_receipt.stat.exists
+
+- name: No Nix from another source
+  ansible.builtin.assert:
+    that: _foreign_nix.stdout | length == 0
+    fail_msg: >-
+      {{ inventory_hostname }} already has a Nix the pinned installer did not install:
+      {{ _foreign_nix.stdout }}. The Union Store needs the installer's multi-user Nix.
+      Remove the other one by hand first, keeping its store aside rather than deleting it.
+      On Debian: sudo apt purge nix-bin nix-setup-systemd, then sudo mv /nix /nix.distro and
+      sudo mv /etc/nix /etc/nix.distro. Then re-run.
+    quiet: true
+  when: _foreign_nix is not skipped
+
 - name: Install Nix (Determinate, pinned) if missing
   become: true
   ansible.builtin.shell: |
