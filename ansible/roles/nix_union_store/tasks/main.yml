@@ -53,7 +53,9 @@
       {{ _foreign_nix.stdout }}. The Union Store needs the installer's multi-user Nix.
       Remove the other one by hand first, keeping its store aside rather than deleting it.
       On Debian: sudo apt purge nix-bin nix-setup-systemd, then sudo mv /nix /nix.distro and
-      sudo mv /etc/nix /etc/nix.distro. Then re-run.
+      sudo mv /etc/nix /etc/nix.distro. The purge leaves its build users and groups, and the
+      installer refuses a nixbld group at another gid: userdel each nixbld* user (getent passwd),
+      then groupdel nixbld and nix-users. Then re-run.
     quiet: true
   when: _foreign_nix is not skipped
 
