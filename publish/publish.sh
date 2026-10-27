@@ -72,6 +72,14 @@ paths=("${outs[@]}")
 log "copying ${#paths[@]} profile closures into the lower store"
 nix copy "${nix_opts[@]}" --to "local?root=$root" "${paths[@]}"
 
+# Nix leaves each store path r-x. cvmfs_server publish runs as the repository
+# owner, not root (the S3 spike ran as root), so it could not write the
+# .cvmfscatalog marker the dirtab asks for in each one: errno 13, "Failed to
+# apply .cvmfsdirtab". A store path's hash covers contents and the executable
+# bit, not directory modes. Only paths not yet writable, so published ones are
+# not copied up again.
+find "$root/nix/store" -mindepth 1 -maxdepth 1 -type d ! -perm -u+w -exec chmod u+w {} +
+
 # Clients open the Lower Store read-only, which SQLite does as immutable and
 # so ignores a -wal file: fold the WAL into db.sqlite and leave the DB out of
 # WAL mode, or clients see an empty or stale store (spike S2).
