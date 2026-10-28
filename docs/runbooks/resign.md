@@ -25,7 +25,8 @@ days.
    `/etc/cvmfs/keys/nix.hayweb.org.masterkey` becomes a **symlink** to it, because `cvmfs_server`
    reads the key at that fixed path.
 5. `cvmfs_server resign nix.hayweb.org` signs a new 30-day whitelist and uploads it to the Origin.
-6. On success **and** on failure, the wrapper removes the symlink and shreds the tmpfs copy.
+6. On success **and** on failure, the wrapper removes the symlink and deletes the tmpfs copy
+   (tmpfs is memory, so the plaintext never reached a disk).
    `ExecStopPost` (`cvmfs-resign cleanup`) repeats that after a kill or a timeout, and systemd removes
    the runtime dir when the unit stops. The master key is never at rest in plaintext.
 
