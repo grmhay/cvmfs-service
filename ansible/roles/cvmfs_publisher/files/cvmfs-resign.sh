@@ -10,8 +10,9 @@
 # (tmpfs under /run, 0700). cvmfs_server reads it at the fixed path
 # /etc/cvmfs/keys/<repo>.masterkey, so that path is a symlink into the
 # runtime dir for the length of the resign, and is removed on success and on
-# failure. A regular file at that path is never touched: it is either the
-# key mkfs left before escrow, or a break-glass resign by hand.
+# failure. Only a link into the runtime dir is ours to remove. Anything else
+# at that path is never touched: a regular file is the key mkfs left before
+# escrow, or a break-glass resign by hand; a link elsewhere fails the run.
 #
 # Environment (set by the unit):
 #   CVMFS_REPOSITORY    repository name (required)
@@ -38,10 +39,23 @@ plain="$run/masterkey"
 log() { printf 'cvmfs-resign[%s]: %s\n' "$repo" "$*" >&2; }
 die() { log "ERROR: $*"; exit 1; }
 
+# True if $key is a symlink into our runtime dir (one this unit made).
+our_link() {
+  [ -L "$key" ] && case "$(readlink "$key")" in "$run"/*) true ;; *) false ;; esac
+}
+not_ours() {
+  printf '%s links to %s, outside %s: not the resign'"'"'s, so leaving it (docs/runbooks/resign.md)' \
+    "$key" "$(readlink "$key")" "$run"
+}
+
 # Remove our symlink and shred the tmpfs copy. Fails if a link is still there.
 cleanup() {
-  if [ -L "$key" ]; then rm -f "$key"; fi
+  if our_link; then rm -f "$key"; fi
   if [ -e "$plain" ]; then shred -u "$plain"; fi
+  if [ -L "$key" ] && ! our_link; then
+    log "ERROR: $(not_ours)"
+    return 1
+  fi
   if [ -L "$key" ] || [ -e "$plain" ]; then
     log "ERROR: could not remove the master key ($key -> $plain)"
     return 1
@@ -74,7 +88,8 @@ fi
 exec 9<"$lock"
 flock -w "$lock_wait" 9 || die "a publish still holds the publish lock $lock after ${lock_wait}s; not resigning"
 
-if [ -L "$key" ]; then
+if [ -L "$key" ] && ! our_link; then die "$(not_ours)"; fi
+if our_link; then
   log "removing a stale $key symlink (a run that was killed)"
   rm -f "$key"
 fi

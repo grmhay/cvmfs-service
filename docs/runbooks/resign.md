@@ -28,8 +28,9 @@ Publisher re-signs it unattended (#19): `cvmfs-resign.timer` fires weekly (Monda
    `ExecStopPost` (`cvmfs-resign cleanup`) repeats that after a kill or a timeout, and systemd removes
    the runtime dir when the unit stops. The master key is never at rest in plaintext.
 
-The wrapper never touches a **regular file** at the key path. If it finds one (escrow not finished,
-or a resign by hand in progress), it fails and leaves the file alone.
+The wrapper removes only its own symlink (one into its runtime dir). It never touches a **regular
+file** at the key path: if it finds one (escrow not finished, or a resign by hand in progress), it
+fails and leaves the file alone. A symlink to anywhere else fails the same way, naming its target.
 
 Before escrow (no `masterkey.enc.yaml`), the unit fails and names `masterkey-escrow`. To fix that, do
 `docs/runbooks/publisher-bootstrap.md` step 2, release, and re-run `publisher.yml`.

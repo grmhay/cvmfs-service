@@ -123,6 +123,27 @@ run_case stale
 check "resigns anyway" [ "$rc" -eq 0 ]
 check "leaves no master key" no_key_left
 
+echo "# a symlink at the key path that is not the resign's (points outside the runtime dir)"
+foreign_link() {
+  mkdir -p "$work/case-$1/keys"
+  printf 'elsewhere\n' > "$work/elsewhere.masterkey"
+  ln -sfn "$work/elsewhere.masterkey" "$work/case-$1/keys/$keyname"
+}
+foreign_link foreign
+run_case foreign
+check "fails" [ "$rc" -ne 0 ]
+check "names the link's target" grep -q "$work/elsewhere.masterkey" <<<"$err"
+check "does not call cvmfs_server" not_called
+check "leaves that link alone" [ "$(readlink "$case_dir/keys/$keyname")" = "$work/elsewhere.masterkey" ]
+check "leaves its target alone" grep -qx elsewhere "$work/elsewhere.masterkey"
+
+echo "# cleanup leaves a symlink that is not the resign's alone"
+foreign_link cleanup-foreign
+run_case cleanup-foreign cleanup
+check "fails" [ "$rc" -ne 0 ]
+check "names the link's target" grep -q "$work/elsewhere.masterkey" <<<"$err"
+check "leaves that link alone" [ "$(readlink "$case_dir/keys/$keyname")" = "$work/elsewhere.masterkey" ]
+
 echo "# cleanup (ExecStopPost) after a kill"
 mkdir -p "$work/case-killed/keys" "$work/case-killed/run"
 printf '%s\n' "$key_text" > "$work/case-killed/run/masterkey"
