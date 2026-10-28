@@ -10,6 +10,9 @@ wrapper="$(realpath "${1:-ansible/roles/cvmfs_publisher/files/cvmfs-resign.sh}")
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
+repo=nix.example.org
+keyname="$repo.masterkey"   # where cvmfs_server looks, inside each case's keys dir
+
 fails=0
 pass() { printf 'ok   %s\n' "$1"; }
 fail() { printf 'FAIL %s\n' "$1"; fails=$((fails + 1)); }
@@ -54,9 +57,9 @@ run_case() {
   chmod 0700 "$case_dir/run"
   rc=0
   env PATH="$work/bin:$PATH" \
-    CVMFS_REPOSITORY=nix.example.org \
+    CVMFS_REPOSITORY="$repo" \
     RESIGN_SECRET="${SECRET:-$work/masterkey.enc.yaml}" \
-    RESIGN_MASTERKEY="$case_dir/keys/nix.example.org.masterkey" \
+    RESIGN_MASTERKEY="$case_dir/keys/$keyname" \
     RUNTIME_DIRECTORY="$case_dir/run" \
     SOPS_AGE_KEY_FILE="${AGE_KEY:-$work/age.txt}" \
     RESIGN_LOCK="${LOCK:-$work/publish.lock}" RESIGN_LOCK_WAIT="${LOCK_WAIT:-5}" \
@@ -64,7 +67,7 @@ run_case() {
     "$wrapper" "$@" 2> "$case_dir/stderr" || rc=$?
   err="$(cat "$case_dir/stderr")"
 }
-no_key_left() { [ ! -e "$case_dir/keys/nix.example.org.masterkey" ] && [ ! -L "$case_dir/keys/nix.example.org.masterkey" ]; }
+no_key_left() { [ ! -e "$case_dir/keys/$keyname" ] && [ ! -L "$case_dir/keys/$keyname" ]; }
 run_dir_empty() { [ -z "$(ls -A "$case_dir/run")" ]; }
 not_called() { [ ! -e "$case_dir/log/calls" ]; }
 
@@ -78,7 +81,7 @@ check "leaves no master key" no_key_left
 echo "# resign succeeds"
 run_case ok
 check "exits 0" [ "$rc" -eq 0 ]
-check "runs cvmfs_server resign <repo>" grep -qx 'resign nix.example.org' "$case_dir/log/calls"
+check "runs cvmfs_server resign <repo>" grep -qx "resign $repo" "$case_dir/log/calls"
 check "cvmfs_server read the escrowed key" diff -q <(printf '%s\n' "$key_text") "$case_dir/log/seen-key"
 check "the key it read lived in the runtime dir (tmpfs)" grep -q "^$case_dir/run/" "$case_dir/log/seen-link"
 check "leaves no master key" no_key_left
@@ -87,7 +90,7 @@ check "leaves the runtime dir empty" run_dir_empty
 echo "# cvmfs_server resign fails"
 STUB_RC=3 run_case resign-fails
 check "fails" [ "$rc" -ne 0 ]
-check "says the resign failed" grep -q 'cvmfs_server resign nix.example.org failed' <<<"$err"
+check "says the resign failed" grep -q "cvmfs_server resign $repo failed" <<<"$err"
 check "leaves no master key" no_key_left
 check "leaves the runtime dir empty" run_dir_empty
 
@@ -103,19 +106,19 @@ check "leaves the runtime dir empty" run_dir_empty
 echo "# a master key file is already there (escrow unfinished, or a resign by hand)"
 pre_existing() {
   mkdir -p "$work/case-$1/keys"
-  printf 'hand-placed\n' > "$work/case-$1/keys/nix.example.org.masterkey"
+  printf 'hand-placed\n' > "$work/case-$1/keys/$keyname"
 }
 pre_existing hand-placed
 run_case hand-placed
 check "fails" [ "$rc" -ne 0 ]
 check "says a key is already there" grep -q 'already' <<<"$err"
 check "does not call cvmfs_server" not_called
-check "leaves that file alone" grep -qx hand-placed "$case_dir/keys/nix.example.org.masterkey"
+check "leaves that file alone" grep -qx hand-placed "$case_dir/keys/$keyname"
 check "leaves the runtime dir empty" run_dir_empty
 
 echo "# a killed run left its symlink behind"
 mkdir -p "$work/case-stale/keys"
-ln -s "$work/case-stale/run/masterkey" "$work/case-stale/keys/nix.example.org.masterkey"
+ln -s "$work/case-stale/run/masterkey" "$work/case-stale/keys/$keyname"
 run_case stale
 check "resigns anyway" [ "$rc" -eq 0 ]
 check "leaves no master key" no_key_left
@@ -123,7 +126,7 @@ check "leaves no master key" no_key_left
 echo "# cleanup (ExecStopPost) after a kill"
 mkdir -p "$work/case-killed/keys" "$work/case-killed/run"
 printf '%s\n' "$key_text" > "$work/case-killed/run/masterkey"
-ln -s "$work/case-killed/run/masterkey" "$work/case-killed/keys/nix.example.org.masterkey"
+ln -s "$work/case-killed/run/masterkey" "$work/case-killed/keys/$keyname"
 run_case killed cleanup
 check "exits 0" [ "$rc" -eq 0 ]
 check "removes the symlink" no_key_left
@@ -134,7 +137,7 @@ echo "# cleanup leaves a hand-placed key alone"
 pre_existing cleanup-hand
 run_case cleanup-hand cleanup
 check "exits 0" [ "$rc" -eq 0 ]
-check "leaves that file alone" grep -qx hand-placed "$case_dir/keys/nix.example.org.masterkey"
+check "leaves that file alone" grep -qx hand-placed "$case_dir/keys/$keyname"
 
 echo "# a publish holds the lock for longer than the resign waits"
 hold_lock 5
@@ -151,7 +154,7 @@ hold_lock 1
 LOCK_WAIT=10 run_case lock-wait
 wait "$holder"
 check "exits 0" [ "$rc" -eq 0 ]
-check "runs cvmfs_server resign <repo>" grep -qx 'resign nix.example.org' "$case_dir/log/calls"
+check "runs cvmfs_server resign <repo>" grep -qx "resign $repo" "$case_dir/log/calls"
 check "leaves no master key" no_key_left
 
 echo "# the publish lock file is missing"
