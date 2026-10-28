@@ -16,7 +16,8 @@ Type=oneshot
 # masterkey-escrow. It holds the publish reconciler's lock throughout, waiting
 # up to {{ publisher_resign_lock_wait }}s for a running publish, so a resign
 # never lands inside a transaction. Failures go to the journal (and Loki).
-RuntimeDirectory=cvmfs-resign
+# The wrapper gets it as RUNTIME_DIRECTORY.
+RuntimeDirectory={{ publisher_resign_runtime_dir }}
 RuntimeDirectoryMode=0700
 UMask=0077
 Environment=CVMFS_REPOSITORY={{ cvmfs_repository }}

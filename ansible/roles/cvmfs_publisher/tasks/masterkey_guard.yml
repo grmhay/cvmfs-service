@@ -22,7 +22,7 @@
   ansible.builtin.set_fact:
     _masterkey_is_resign: >-
       {{ _masterkey.stat.exists and (_masterkey.stat.islnk | default(false))
-         and (_masterkey.stat.lnk_source | default('')).startswith('/run/cvmfs-resign/') }}
+         and (_masterkey.stat.lnk_source | default('')).startswith('/run/' ~ publisher_resign_runtime_dir ~ '/') }}
 
 - name: Master key is not on the Publisher
   ansible.builtin.assert:
