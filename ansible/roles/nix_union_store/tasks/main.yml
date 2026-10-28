@@ -24,6 +24,41 @@
     state: present
   when: cvmfs_nix_mode != "thin"
 
+- name: Look for the Nix installer's receipt
+  ansible.builtin.stat:
+    path: /nix/receipt.json
+  register: _nix_receipt
+  when: cvmfs_nix_mode != "thin"
+
+# The installer refuses a host that already has a Nix it did not install
+# (e.g. Debian's nix-bin), and the role must not remove one by itself.
+- name: Find a Nix the pinned installer did not install
+  ansible.builtin.shell: |
+    set -o pipefail
+    nix=$(command -v nix || command -v nix-env || true)
+    [ -n "$nix" ] || exit 0
+    real=$(readlink -f "$nix")
+    echo "$real ($(dpkg -S "$real" 2>/dev/null | cut -d: -f1 || rpm -qf "$real" 2>/dev/null || echo 'no package'))"
+  args:
+    executable: /bin/bash
+  register: _foreign_nix
+  changed_when: false
+  when: cvmfs_nix_mode != "thin" and not _nix_receipt.stat.exists
+
+- name: No Nix from another source
+  ansible.builtin.assert:
+    that: _foreign_nix.stdout | length == 0
+    fail_msg: >-
+      {{ inventory_hostname }} already has a Nix the pinned installer did not install:
+      {{ _foreign_nix.stdout }}. The Union Store needs the installer's multi-user Nix.
+      Remove the other one by hand first, keeping its store aside rather than deleting it.
+      On Debian: sudo apt purge nix-bin nix-setup-systemd, then sudo mv /nix /nix.distro and
+      sudo mv /etc/nix /etc/nix.distro. The purge leaves its build users and groups, and the
+      installer refuses a nixbld group at another gid: userdel each nixbld* user (getent passwd),
+      then groupdel nixbld and nix-users. Then re-run.
+    quiet: true
+  when: _foreign_nix is not skipped
+
 - name: Install Nix (Determinate, pinned) if missing
   become: true
   ansible.builtin.shell: |
@@ -36,6 +71,53 @@
     # Installers from v3.13.0 default to Determinate Nix; v3.8.0 ignores this.
     NIX_INSTALLER_PREFER_UPSTREAM_NIX: "true"
   when: cvmfs_nix_mode != "thin"
+
+# nix.conf sends every client to store = daemon, and the daemon reads it too:
+# only the drop-in points the daemon elsewhere. Without one it connects to its
+# own socket, worker after worker, until the host runs out of memory. So a
+# union host with no drop-in yet (before the union is assembled, or deferred on
+# the Publisher) gets one that opens the plain local store, before anything
+# below talks to the daemon. union.yml replaces it with the overlay one; an
+# existing drop-in is never touched here.
+- name: Look for the daemon's drop-in
+  ansible.builtin.stat:
+    path: /etc/systemd/system/nix-daemon.service.d/union-store.conf
+  register: _daemon_dropin
+  when: cvmfs_nix_mode == "union"
+
+- name: Run nix-daemon on the local store until the union is assembled
+  when: cvmfs_nix_mode == "union" and not _daemon_dropin.stat.exists
+  become: true
+  block:
+    - name: Drop-in directory for the daemon
+      ansible.builtin.file:
+        path: /etc/systemd/system/nix-daemon.service.d
+        state: directory
+        mode: "0755"
+
+    - name: Write the local-store drop-in
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/nix-daemon.service.d/union-store.conf
+        mode: "0644"
+        content: |
+          [Service]
+          ExecStart=
+          ExecStart=@/nix/var/nix/profiles/default/bin/nix-daemon nix-daemon --daemon --option store local
+
+    # Now, not from a handler: the version checks below connect to the daemon.
+    - name: Reload systemd onto the drop-in
+      ansible.builtin.systemd:
+        name: nix-daemon.service
+        daemon_reload: true
+      register: _daemon_unit
+
+    # A stopped service is left to the socket, which starts it on the new
+    # drop-in; a running one restarts, which also kills any looping workers.
+    - name: Restart a running nix-daemon onto the local store
+      ansible.builtin.systemd:
+        name: nix-daemon.service
+        state: restarted
+      when: _daemon_unit.status.ActiveState | default('') == "active"
 
 - name: Read the installed Nix version
   ansible.builtin.include_tasks: nix_version.yml

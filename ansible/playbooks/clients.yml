@@ -3,6 +3,9 @@
 # come from NetBox custom fields through the dynamic inventory (Q25).
 - name: Fleet clients
   hosts: all:!nix_publisher:!nix_cache
+  # A later failure must not drop a queued restart (nix-daemon on a new
+  # nix.conf): the next run sees no change and never notifies again.
+  force_handlers: true
   roles:
     - cvmfs_client
     - nix_union_store

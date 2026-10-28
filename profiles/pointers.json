@@ -1,4 +1,7 @@
 {
   "_comment": "Audit trail of the stable channel. Written by `nix run .#promote -- --commit`; the Repository's /profiles/stable symlinks are the live truth, this file is the git history of them.",
-  "stable": {}
+  "stable": {
+    "builder/x86_64-linux": "/nix/store/hh37hd2ipg98biif0w9vydb5y2v35ypm-profile-builder",
+    "builder/aarch64-linux": "/nix/store/gln1fn44hbxvgyq5a29hjg3m1rvir3nj-profile-builder"
+  }
 }

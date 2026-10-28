@@ -17,10 +17,13 @@
     owner: "{{ publisher_user }}"
     mode: "0700"
 
+# The command module strips trailing whitespace from stdout, and this key is
+# the last value in the secrets file, so it arrives without the final newline
+# OpenSSH needs ("error in libcrypto"). Both copies put it back.
 - name: Builder key
   become: true
   ansible.builtin.copy:
-    content: "{{ publisher_secrets.nixbuild_private_key }}"
+    content: "{{ publisher_secrets.nixbuild_private_key | trim }}\n"
     dest: "{{ publisher_home }}/.ssh/id_nixbuild"
     owner: "{{ publisher_user }}"
     mode: "0600"
@@ -38,7 +41,7 @@
 - name: Root ssh key for remote builds
   become: true
   ansible.builtin.copy:
-    content: "{{ publisher_secrets.nixbuild_private_key }}"
+    content: "{{ publisher_secrets.nixbuild_private_key | trim }}\n"
     dest: /root/.ssh/id_nixbuild
     mode: "0600"
   no_log: true
