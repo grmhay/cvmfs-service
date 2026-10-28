@@ -30,5 +30,6 @@ Environment=RESIGN_LOCK_WAIT={{ publisher_resign_lock_wait }}
 Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ExecStart=/usr/local/sbin/cvmfs-resign
 ExecStopPost=/usr/local/sbin/cvmfs-resign cleanup
-# The lock wait plus the resign itself.
-TimeoutStartSec=4h
+# The lock wait plus 30 min for the resign itself, so systemd never kills a
+# run that is still waiting for the lock.
+TimeoutStartSec={{ publisher_resign_lock_wait | int + 1800 }}
