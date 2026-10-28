@@ -87,7 +87,7 @@
           ## The whitelist parser's tests (#20) run with busybox alone on PATH,
           ## because the probe container that runs it has no GNU userland either.
           whitelist-expiry = pkgs.runCommand "whitelist-expiry-tests" { } ''
-            PATH=${pkgs.busybox}/bin ROOT=${self} sh ${self}/tests/whitelist-expiry.sh
+            PATH=${pkgs.busybox}/bin ROOT=${./.} sh ${./tests/whitelist-expiry.sh}
             touch $out
           '';
           ## The Publisher's unattended resign wrapper (#19), against real
