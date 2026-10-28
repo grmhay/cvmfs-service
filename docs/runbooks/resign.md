@@ -47,7 +47,10 @@ To resign now: `ssh publisher 'sudo systemctl start cvmfs-resign.service'`. Fail
 journal, and from there in Loki. The whitelist expiry alert (#20) catches a resign that keeps failing.
 
 A playbook run during a resign passes the master-key guard: the guard ignores a symlink into
-`/run/cvmfs-resign/` (`tasks/masterkey_guard.yml`).
+`/run/cvmfs-resign/` (`publisher_resign_runtime_dir`) while `cvmfs-resign.service` is running
+(`tasks/masterkey_guard.yml`). Once the unit has stopped, such a link is left over from a killed
+resign and fails the guard like a key file; remove it with
+`ssh publisher 'sudo rm /etc/cvmfs/keys/nix.hayweb.org.masterkey'` and re-run.
 
 ## Break-glass: resign by hand
 

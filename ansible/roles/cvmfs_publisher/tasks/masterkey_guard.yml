@@ -9,7 +9,8 @@
 #     by hand in progress);
 #   - the unattended resign (cvmfs-resign.service) puts a symlink here into
 #     its tmpfs runtime dir for the length of the resign. That is not a key at
-#     rest, so a run during that window passes.
+#     rest, so a run during that window passes. The link is trusted only while
+#     the unit is running: one a killed run left behind fails like a key file.
 # First-run sequence: docs/runbooks/publisher-bootstrap.md.
 
 - name: Look for the master key
@@ -18,11 +19,23 @@
     get_checksum: false
   register: _masterkey
 
-- name: Is it the unattended resign's link into tmpfs
+- name: Resign unit state
+  ansible.builtin.systemd:
+    name: cvmfs-resign.service
+  register: _resign_unit
+
+- name: The master key path is a link into the resign's runtime dir
   ansible.builtin.set_fact:
-    _masterkey_is_resign: >-
+    _masterkey_resign_link: >-
       {{ _masterkey.stat.exists and (_masterkey.stat.islnk | default(false))
          and (_masterkey.stat.lnk_source | default('')).startswith('/run/' ~ publisher_resign_runtime_dir ~ '/') }}
+
+# A oneshot is "activating" for the whole of ExecStart, "deactivating" in ExecStopPost.
+- name: That link is the resign's only while cvmfs-resign.service is running
+  ansible.builtin.set_fact:
+    _masterkey_is_resign: >-
+      {{ (_masterkey_resign_link | bool)
+         and (_resign_unit.status.ActiveState | default('')) in ['activating', 'active', 'deactivating'] }}
 
 - name: Master key is not on the Publisher
   ansible.builtin.assert:
@@ -32,9 +45,12 @@
       or (publisher_allow_masterkey | bool)
       or (_mkfs is defined and _mkfs is changed)
     fail_msg: >-
-      {{ publisher_masterkey_path }} is on the Publisher. Move it into SOPS first:
+      {% if _masterkey_resign_link | bool %}{{ publisher_masterkey_path }} links to
+      {{ _masterkey.stat.lnk_source }}, but cvmfs-resign.service is not running: a killed
+      resign left it. Remove it (`sudo rm {{ publisher_masterkey_path }}`), then re-run this
+      playbook.{% else %}{{ publisher_masterkey_path }} is on the Publisher. Move it into SOPS first:
       from a nix develop shell on the workstation, run
       `nix run .#masterkey-escrow` (publish/masterkey-escrow.sh), then re-run this playbook.
       To run with the key in place (a resign by hand in progress), pass -e publisher_allow_masterkey=true.
-      See docs/runbooks/publisher-bootstrap.md.
+      See docs/runbooks/publisher-bootstrap.md.{% endif %}
     quiet: true
