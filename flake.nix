@@ -75,12 +75,34 @@
           ## Runs on the workstation, not the Publisher: moves the master key
           ## that mkfs leaves behind into ansible/secrets/ (docs/runbooks/publisher-bootstrap.md).
           masterkey-escrow = mkApp "masterkey-escrow" [ pkgs.sops pkgs.openssh pkgs.coreutils pkgs.gnused ];
+          ## Reads a .cvmfswhitelist on stdin and prints its expiry (#20). The
+          ## probe on skyline (homelab-opscontrolplane) runs a vendored copy.
+          whitelist-expiry = mkApp "whitelist-expiry" [ pkgs.gawk pkgs.coreutils ];
         };
 
         ## `nix flake check` builds every Profile for the host system and
         ## evaluates them for the other one (CI has no aarch64 builders;
         ## the Publisher does the real aarch64 build before publishing).
-        checks = profiles;
+        checks = profiles // {
+          ## The whitelist parser's tests (#20) run with busybox alone on PATH,
+          ## because the probe container that runs it has no GNU userland either.
+          whitelist-expiry = pkgs.runCommand "whitelist-expiry-tests" { } ''
+            PATH=${pkgs.busybox}/bin ROOT=${./.} sh ${./tests/whitelist-expiry.sh}
+            touch $out
+          '';
+          ## The Publisher's unattended resign wrapper (#19), against real
+          ## sops/age and a stub cvmfs_server: success, failures, cleanup, the publish lock.
+          resign-wrapper = pkgs.runCommand "resign-wrapper-test"
+            { nativeBuildInputs = [ pkgs.bash pkgs.coreutils pkgs.gnugrep pkgs.gnused pkgs.diffutils pkgs.sops pkgs.age pkgs.util-linux ]; }
+            ''
+              cp ${./ansible/roles/cvmfs_publisher/files/cvmfs-resign.sh} cvmfs-resign.sh
+              cp ${./tests/cvmfs-resign-test.sh} cvmfs-resign-test.sh
+              chmod +x cvmfs-resign.sh cvmfs-resign-test.sh
+              patchShebangs .
+              HOME="$TMPDIR" ./cvmfs-resign-test.sh ./cvmfs-resign.sh
+              touch $out
+            '';
+        };
       })
     // flake-utils.lib.eachDefaultSystem (system:
       let pkgs = import nixpkgs { inherit system; };

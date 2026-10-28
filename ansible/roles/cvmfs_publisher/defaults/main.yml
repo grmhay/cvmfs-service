@@ -8,6 +8,9 @@ publisher_home: /home/publisher
 publisher_repo_url: https://github.com/grmhay/cvmfs-service.git
 publisher_repo_dir: "{{ publisher_home }}/cvmfs-service"
 publisher_state_dir: "{{ publisher_home }}/.local/state/cvmfs-publish"
+# flock held by the publish reconciler for a whole run, and by the resign, so
+# the two never overlap (#19). Owned by publisher_user; the role creates it.
+publisher_lock_file: "{{ publisher_state_dir }}/publish.lock"
 publisher_interval: 5min
 publisher_timer_enabled: false    # enable after the first manual publish succeeds
 # Relative to the role, so it resolves inside a vendored collection as well as
@@ -58,3 +61,23 @@ publisher_public_key_fetch_dest: ""
 # (tasks/masterkey_guard.yml, docs/runbooks/publisher-bootstrap.md).
 publisher_masterkey_path: "/etc/cvmfs/keys/{{ cvmfs_repository }}.masterkey"
 publisher_allow_masterkey: false
+
+# Unattended resign (cvmfs-resign.service on publisher_resign_calendar, by default
+# weekly; #19, docs/runbooks/resign.md).
+# The escrowed ciphertext ships in the collection; once it exists the role
+# installs it root-only, and the unit decrypts it with the shared age key on
+# /shared (ADR 0005). The plaintext lives only in the unit's RuntimeDirectory,
+# /run/<publisher_resign_runtime_dir> (tmpfs), behind a symlink at
+# publisher_masterkey_path for the length of the resign.
+publisher_masterkey_secret_file: "{{ role_path }}/../../secrets/masterkey.enc.yaml"
+publisher_resign_secret_dest: /etc/cvmfs-resign/masterkey.enc.yaml
+# Under /run; the master-key guard trusts a link into it only while the unit runs.
+publisher_resign_runtime_dir: cvmfs-resign
+publisher_resign_age_key_file: /shared/ansible-config/sops/age/keys.txt
+# sops runs as this user: filer1's export may squash root, and the key file is
+# group sopsusers 0640. Empty: run sops as root.
+publisher_resign_sops_user: ansible
+publisher_resign_calendar: "Mon *-*-* 03:00:00"
+# How long a resign waits for a running publish (cvmfs-publish.service may run 3h).
+# The unit's TimeoutStartSec is this plus 30 min.
+publisher_resign_lock_wait: 12600

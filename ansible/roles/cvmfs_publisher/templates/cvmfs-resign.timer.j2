@@ -1,8 +1,8 @@
 [Unit]
-Description=Whitelist resign check every 14 days
+Description=Re-sign the {{ cvmfs_repository }} whitelist on {{ publisher_resign_calendar }} (it expires after 30 days)
 
 [Timer]
-OnCalendar=*-*-01,15 03:00:00
+OnCalendar={{ publisher_resign_calendar }}
 Persistent=true
 
 [Install]

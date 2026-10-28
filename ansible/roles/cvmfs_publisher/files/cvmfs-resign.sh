@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+# Unattended whitelist resign, run as root by cvmfs-resign.service (issue #19).
+# Installed by the cvmfs_publisher role; the whitelist expires 30 days after
+# signing and clients then refuse the Repository (docs/runbooks/resign.md).
+#
+#   cvmfs-resign            decrypt the escrowed master key, resign, remove the key
+#   cvmfs-resign cleanup    remove what a killed run left (the unit's ExecStopPost)
+#
+# The plaintext master key only ever lives in the unit's RuntimeDirectory
+# (tmpfs under /run, 0700). cvmfs_server reads it at the fixed path
+# /etc/cvmfs/keys/<repo>.masterkey, so that path is a symlink into the
+# runtime dir for the length of the resign, and is removed on success and on
+# failure. Only a link into the runtime dir is ours to remove. Anything else
+# at that path is never touched: a regular file is the key mkfs left before
+# escrow, or a break-glass resign by hand; a link elsewhere fails the run.
+#
+# Environment (set by the unit):
+#   CVMFS_REPOSITORY    repository name (required)
+#   RUNTIME_DIRECTORY   tmpfs work dir, from RuntimeDirectory= (required)
+#   RESIGN_SECRET       masterkey.enc.yaml on this host (required)
+#   RESIGN_MASTERKEY    where cvmfs_server looks, /etc/cvmfs/keys/<repo>.masterkey (required)
+#   SOPS_AGE_KEY_FILE   the shared age identity on /shared (ADR 0005)
+#   RESIGN_LOCK         the publish reconciler's flock file (required; the role
+#                       creates it, owned by the publisher user)
+#   RESIGN_LOCK_WAIT    seconds to wait for a running publish (required)
+#   RESIGN_SOPS_USER    run sops as this user (one that can read SOPS_AGE_KEY_FILE
+#                       on the NFS export); empty: run it as root
+set -euo pipefail
+
+repo="${CVMFS_REPOSITORY:?}"
+run="${RUNTIME_DIRECTORY:?set by systemd from RuntimeDirectory=}"
+secret="${RESIGN_SECRET:?the escrowed ciphertext (publisher_resign_secret_dest)}"
+key="${RESIGN_MASTERKEY:?where cvmfs_server reads the key (publisher_masterkey_path)}"
+sops_user="${RESIGN_SOPS_USER:-}"
+lock="${RESIGN_LOCK:?the publish lock file (publisher_lock_file)}"
+lock_wait="${RESIGN_LOCK_WAIT:?seconds to wait for the publish lock (publisher_resign_lock_wait)}"
+plain="$run/masterkey"
+
+log() { printf 'cvmfs-resign[%s]: %s\n' "$repo" "$*" >&2; }
+die() { log "ERROR: $*"; exit 1; }
+
+# True if $key is a symlink into our runtime dir (one this unit made).
+our_link() {
+  [ -L "$key" ] && case "$(readlink "$key")" in "$run"/*) true ;; *) false ;; esac
+}
+not_ours() {
+  printf '%s links to %s, outside %s: not the resign'"'"'s, so leaving it (docs/runbooks/resign.md)' \
+    "$key" "$(readlink "$key")" "$run"
+}
+
+# Remove our symlink and shred the tmpfs copy. Fails if a link is still there.
+cleanup() {
+  if our_link; then rm -f "$key"; fi
+  if [ -e "$plain" ]; then shred -u "$plain"; fi
+  if [ -L "$key" ] && ! our_link; then
+    log "ERROR: $(not_ours)"
+    return 1
+  fi
+  if [ -L "$key" ] || [ -e "$plain" ]; then
+    log "ERROR: could not remove the master key ($key -> $plain)"
+    return 1
+  fi
+}
+
+# Ciphertext on stdin, key on stdout. sops reads stdin itself (no filename),
+# so it works as an unprivileged user on a file only root can open.
+decrypt() {
+  local cmd=(sops decrypt --input-type yaml --extract '["masterkey"]')
+  if [ -n "$sops_user" ]; then
+    runuser -u "$sops_user" -- env SOPS_AGE_KEY_FILE="${SOPS_AGE_KEY_FILE:-}" "${cmd[@]}"
+  else
+    "${cmd[@]}"
+  fi
+}
+
+if [ "${1:-}" = cleanup ]; then
+  cleanup
+  exit
+fi
+
+[ -f "$secret" ] || die "no $secret: the master key has not been escrowed yet. Run \`nix run .#masterkey-escrow\` (docs/runbooks/publisher-bootstrap.md), commit ansible/secrets/masterkey.enc.yaml, release, and re-run publisher.yml"
+
+# Hold the publish reconciler's lock for the whole resign, so a resign never
+# runs inside a publish transaction (and the reconciler skips its tick while
+# we hold it). Opened read-only: the file is the publisher user's, and
+# creating it here as root would lock that user out of it.
+[ -f "$lock" ] || die "no publish lock file $lock: re-run publisher.yml"
+exec 9<"$lock"
+flock -w "$lock_wait" 9 || die "a publish still holds the publish lock $lock after ${lock_wait}s; not resigning"
+
+if [ -L "$key" ] && ! our_link; then die "$(not_ours)"; fi
+if our_link; then
+  log "removing a stale $key symlink (a run that was killed)"
+  rm -f "$key"
+fi
+[ ! -e "$key" ] || die "a master key is already at $key (escrow not finished, or a resign by hand in progress): leaving it; see docs/runbooks/resign.md"
+
+trap 'cleanup || exit 1' EXIT
+umask 077
+
+decrypt < "$secret" > "$plain" || die "could not decrypt the master key from $secret (is /shared mounted, and ${SOPS_AGE_KEY_FILE:-the age key} readable${sops_user:+ by $sops_user}?)"
+[ -s "$plain" ] || die "$secret decrypted to an empty master key"
+ln -s "$plain" "$key"
+
+cvmfs_server resign "$repo" || die "cvmfs_server resign $repo failed"
+log "whitelist re-signed"
