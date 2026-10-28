@@ -1,8 +1,9 @@
 # Runbook: re-sign the whitelist
 
 The repository whitelist expires 30 days after signing; clients refuse an expired one. The
-Publisher re-signs it unattended (#19): `cvmfs-resign.timer` fires weekly (Monday 03:00,
-`Persistent=true`), which gives four tries inside the 30 days.
+Publisher re-signs it unattended (#19): `cvmfs-resign.timer` fires on `publisher_resign_calendar`
+(`Persistent=true`). By default that is weekly, Monday 03:00, which gives four tries inside the 30
+days.
 
 ## How the unattended resign works
 
@@ -14,7 +15,7 @@ Publisher re-signs it unattended (#19): `cvmfs-resign.timer` fires weekly (Monda
    lands inside a publish transaction. If a publish is running it waits up to
    `publisher_resign_lock_wait` (3.5 h) and then fails without decrypting anything; while it holds
    the lock the reconciler skips its 5-minute tick. A transaction opened **by hand** (outside
-   `cvmfs-publish.service`) does not take the lock, so don't leave one open over the Monday 03:00 run.
+   `cvmfs-publish.service`) does not take the lock, so don't leave one open over a scheduled run (by default Monday 03:00).
 2. It reads the escrowed ciphertext `/etc/cvmfs-resign/masterkey.enc.yaml` (root only). The role
    installs it from the collection's `secrets/masterkey.enc.yaml` once that exists.
 3. `sops` decrypts the `masterkey` field with the shared age key on `/shared` (ADR 0005), run as
@@ -94,8 +95,8 @@ Grafana on skyline alerts before the whitelist runs out, so a resign that keeps 
     missing or unparsable whitelist, a failed fetch, a stopped probe and a Loki error. No data counts
     as a failure.
 
-With a weekly timer and a 30-day whitelist, the expiry alert fires after two weekly resigns in a row
-have failed, with at least one try left. When it fires, read the timer's last runs ("Check it"), fix the
+With the default weekly timer and a 30-day whitelist, the expiry alert fires after two weekly resigns
+in a row have failed, with at least one try left. When it fires, read the timer's last runs ("Check it"), fix the
 cause and start the unit, or resign by hand (break-glass). When the probe alert fires, the probe's own lines say why:
 `{container="cvmfs-whitelist-probe"}` in Grafana Explore. Check the expiry by hand from a `nix develop` shell:
 

@@ -1,5 +1,5 @@
 [Unit]
-Description=Re-sign the {{ cvmfs_repository }} whitelist weekly (4 tries inside its 30 days)
+Description=Re-sign the {{ cvmfs_repository }} whitelist on {{ publisher_resign_calendar }} (it expires after 30 days)
 
 [Timer]
 OnCalendar={{ publisher_resign_calendar }}

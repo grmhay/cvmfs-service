@@ -62,7 +62,8 @@ publisher_public_key_fetch_dest: ""
 publisher_masterkey_path: "/etc/cvmfs/keys/{{ cvmfs_repository }}.masterkey"
 publisher_allow_masterkey: false
 
-# Unattended resign (cvmfs-resign.service, weekly; #19, docs/runbooks/resign.md).
+# Unattended resign (cvmfs-resign.service on publisher_resign_calendar, by default
+# weekly; #19, docs/runbooks/resign.md).
 # The escrowed ciphertext ships in the collection; once it exists the role
 # installs it root-only, and the unit decrypts it with the shared age key on
 # /shared (ADR 0005). The plaintext lives only in the unit's RuntimeDirectory,
