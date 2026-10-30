@@ -1,0 +1,21 @@
+# Managed by cvmfs-service (role nix_union_store), union Mode (#35).
+# Replaces the installer's link into /nix/store, which systemd cannot follow
+# at boot: /nix/store is the union's empty mountpoint until nix-store.mount.
+# The installer's socket (Nix 2.30.0), with one change: no default
+# dependencies, so it is not in sockets.target. A socket there is ordered
+# before basic.target, and this one waits for the union, which waits for the
+# network: every service on the host would wait for the network with it.
+[Unit]
+Description=Nix Daemon Socket
+DefaultDependencies=no
+RequiresMountsFor=/nix/store
+After=sysinit.target
+Before=multi-user.target shutdown.target
+Conflicts=shutdown.target
+ConditionPathIsReadWrite=/nix/var/nix/daemon-socket
+
+[Socket]
+ListenStream=/nix/var/nix/daemon-socket/socket
+
+[Install]
+WantedBy=multi-user.target

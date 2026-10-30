@@ -56,6 +56,9 @@
     - Reload systemd
     - Restart nix-daemon
 
+- name: Boot ordering of the union and the daemon
+  ansible.builtin.include_tasks: boot_order.yml
+
 - name: Mount the union store
   become: true
   ansible.builtin.systemd:
@@ -64,9 +67,8 @@
     state: started
     daemon_reload: true
 
-# The installer's nix-daemon units are symlinks into /nix/store, which is empty
-# between the first-run migration and the mount: systemd can only load them
-# from here on, hence daemon_reload. The socket comes up before the handlers
+# The daemon's units are the role's own files (boot_order.yml), and
+# daemon_reload has systemd load them now. The socket comes up before the handlers
 # restart the service; a service started first makes the socket refuse to listen.
 - name: Start the daemon's socket on top of it
   become: true
