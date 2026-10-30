@@ -119,6 +119,28 @@
         state: restarted
       when: _daemon_unit.status.ActiveState | default('') == "active"
 
+# The installed Nix, its version and the daemon's units are all read through
+# /nix/store. A boot that left the union unmounted (#35) leaves /nix/store an
+# empty mountpoint over the RW Branch, so the nix binary is missing: mount it
+# before anything reads it.
+- name: Look for an assembled union
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - "{{ nix_rw_root }}/store"
+    - "{{ nix_systemd_unit_dir }}/nix-store.mount"
+  register: _union_parts
+  when: cvmfs_nix_mode != "thin"
+
+- name: Mount a union a boot left unmounted
+  become: true
+  ansible.builtin.systemd:
+    name: nix-store.mount
+    state: started
+  when:
+    - cvmfs_nix_mode != "thin"
+    - _union_parts.results | map(attribute='stat.exists') | min
+
 - name: Read the installed Nix version
   ansible.builtin.include_tasks: nix_version.yml
   when: cvmfs_nix_mode != "thin"
