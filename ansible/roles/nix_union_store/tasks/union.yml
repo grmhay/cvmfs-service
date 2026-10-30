@@ -124,7 +124,29 @@
     state: started
 
 # The socket comes up before the handlers restart the service; a service
-# started first makes the socket refuse to listen.
+# started first makes the socket refuse to listen ("Socket service
+# nix-daemon.service already active, refusing"). A daemon started by hand
+# (`systemctl start nix-daemon`) is that case: stop it so the socket takes over.
+- name: Read the daemon's socket and service state
+  become: true
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+  loop:
+    - nix-daemon.socket
+    - nix-daemon.service
+  register: _daemon_units
+  when: not ansible_check_mode
+
+- name: Stop a daemon running without its socket
+  become: true
+  ansible.builtin.systemd:
+    name: nix-daemon.service
+    state: stopped
+  when:
+    - not ansible_check_mode
+    - _daemon_units.results[0].status.ActiveState != "active"
+    - _daemon_units.results[1].status.ActiveState == "active"
+
 - name: Start the daemon's socket on top of it
   become: true
   ansible.builtin.systemd:
