@@ -22,19 +22,41 @@
     executable: /bin/bash
   when: _store_fstype.stdout != "fuse.mergerfs"
 
-- name: Install the nix-store.mount unit
+- name: The union's mount unit and the daemon's units
+  ansible.builtin.include_tasks: daemon_units_boot_order.yml
+
+# Once, for every unit above: the checks and starts below need systemd to have
+# loaded them. Handlers restart the daemon at the end, on the new units.
+- name: Reload systemd onto the union's units
   become: true
-  ansible.builtin.template:
-    src: nix-store.mount.j2
-    dest: /etc/systemd/system/nix-store.mount
-    mode: "0644"
-  notify: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Read the union's boot ordering
+  become: true
+  ansible.builtin.systemd:
+    name: nix-store.mount
+  register: _union_unit
+  when: not ansible_check_mode
+
+# A union before local-fs.target loops at boot with the network it waits for,
+# and systemd breaks the loop by dropping a job: the union, or the network.
+# Checked before the union is (re)started on the new unit.
+- name: The union is not ordered before local-fs.target
+  when: not ansible_check_mode
+  ansible.builtin.assert:
+    that: "'local-fs.target' not in _union_unit.status.Before.split()"
+    fail_msg: >-
+      nix-store.mount is ordered Before={{ _union_unit.status.Before }}, so the boot
+      would loop with network-online.target (#35). It must be a network mount: DefaultDependencies=no,
+      After=network-online.target, WantedBy=remote-fs.target (templates/nix-store.mount.j2).
+    quiet: true
 
 # A union already mounted on other branches (a Canary over the stand-in Lower
 # Store, #28) keeps them until it is remounted: a new unit file, a daemon
 # reload and `state: started` all leave a mounted mount as it is. The daemon's
-# drop-in below would then open the Repository's database over the stand-in's
-# files. mergerfs reports its live branches in an xattr on its control file.
+# drop-in (installed above) would then open the Repository's database over the
+# stand-in's files. mergerfs reports its live branches in an xattr on its control file.
 - name: Read the mounted union's branches
   become: true
   ansible.builtin.command: >-
@@ -62,7 +84,6 @@
       ansible.builtin.systemd:
         name: nix-store.mount
         state: restarted
-        daemon_reload: true
   rescue:
     - name: Start nix-daemon again on the old union
       ansible.builtin.systemd:
@@ -76,53 +97,21 @@
           and remounting it failed (most likely a process still uses /nix/store: fuser -vm
           /nix/store). Stop those processes, or reboot, then re-run.
 
-- name: Ensure the drop-in directory exists
-  become: true
-  ansible.builtin.file:
-    path: /etc/systemd/system/nix-daemon.service.d
-    state: directory
-    mode: "0755"
-
-# The daemon alone opens the overlay store; nix.conf points clients at it
-# with store = daemon. % is doubled for systemd.
-- name: Run nix-daemon on the overlay store, after the union mount
-  become: true
-  ansible.builtin.copy:
-    dest: /etc/systemd/system/nix-daemon.service.d/union-store.conf
-    mode: "0644"
-    content: |
-      [Unit]
-      Requires=nix-store.mount
-      After=nix-store.mount
-
-      [Service]
-      ExecStart=
-      ExecStart=@/nix/var/nix/profiles/default/bin/nix-daemon nix-daemon --daemon --option store {{ nix_overlay_store_url | replace('%', '%%') }}
-  notify:
-    - Reload systemd
-    - Restart nix-daemon
-
-- name: Boot ordering of the union and the daemon
-  ansible.builtin.include_tasks: boot_order.yml
-
 - name: Mount the union store
   become: true
   ansible.builtin.systemd:
     name: nix-store.mount
     enabled: true
     state: started
-    daemon_reload: true
 
-# The daemon's units are the role's own files (boot_order.yml), and
-# daemon_reload has systemd load them now. The socket comes up before the handlers
-# restart the service; a service started first makes the socket refuse to listen.
+# The socket comes up before the handlers restart the service; a service
+# started first makes the socket refuse to listen.
 - name: Start the daemon's socket on top of it
   become: true
   ansible.builtin.systemd:
     name: nix-daemon.socket
     enabled: true
     state: started
-    daemon_reload: true
 
 - name: Flush handlers so the daemon restarts on the union
   ansible.builtin.meta: flush_handlers

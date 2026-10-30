@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Boot ordering of the Union Store (#35): the units nix_union_store installs,
-# next to the CVMFS client mount systemd-fstab-generator makes from
+# Boot ordering of the Union Store (#35): the units nix_union_store's own tasks
+# write (tasks/daemon_units_boot_order.yml, run here into a scratch unit
+# directory), next to the CVMFS client mount systemd-fstab-generator makes from
 # cvmfs_client's fstab line and a Debian ifupdown network chain, booted to
 # multi-user.target by `systemd --test`, which builds the same initial
 # transaction systemd builds at boot and logs any ordering cycle in it.
@@ -16,31 +17,54 @@
 # Two hosts: the Publisher (Lower Store in its client view, a cvmfs network
 # mount, ADR 0004) and a Canary over the stand-in Lower Store (a local path).
 #
-# Needs ansible (to render the templates) and the fleet's systemd: 257, as on
+# Needs ansible (to run the role's tasks) and the fleet's systemd: 257, as on
 # Debian 13 and RHEL 10 (`systemd --test` runs unprivileged). Not a flake
 # check: nixpkgs' systemd (262) no longer orders a fuse mount before
 # local-fs.target, so the old unit's cycle does not show there. Run it in `nix develop` on a
 # Debian 13 workstation. SYSTEMD= names another binary, UNITS= the directory of
 # its stock units (default: the host's unit search path).
 # Usage: tests/union-mount-order.sh   (from the checkout root, or set ROOT)
-# DEBUG=1 prints systemd's warnings; KEEP=1 keeps the rendered units and dumps.
-set -uo pipefail
+# DEBUG=1 prints systemd's warnings; KEEP=1 keeps the scratch units and dumps.
+set -euo pipefail
 
 root="${ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 role="$root/ansible/roles/nix_union_store"
 systemd="${SYSTEMD:-/usr/lib/systemd/systemd}"
 work="$(mktemp -d)"
 if [ -n "${KEEP:-}" ]; then echo "work dir: $work" >&2; else trap 'rm -rf "$work"' EXIT; fi
-failures=0
 
-# render <template> <dest> [-e k=v ...]: the role's defaults, then overrides.
-render() {
-  local src="$1" dest="$2"
+fails=0
+pass() { printf 'ok   %s\n' "$1"; }
+fail() { printf 'FAIL %s\n' "$1"; fails=$((fails + 1)); }
+check() { local name="$1"; shift; if "$@"; then pass "$name"; else fail "$name"; fi; }
+
+# A play that runs one of the role's task files on this machine, as this user
+# (no become). The handlers carry the role's names and do nothing: nothing here
+# talks to systemd. The templates link is where the task files find the role's.
+ln -s "$role/templates" "$work/templates"
+cat > "$work/play.yml" <<'EOF'
+- name: One of nix_union_store's task files, into a scratch unit directory
+  hosts: localhost
+  gather_facts: false
+  handlers:
+    - name: Reload systemd
+      ansible.builtin.meta: noop
+    - name: Restart nix-daemon
+      ansible.builtin.meta: noop
+  tasks:
+    - name: The task file
+      ansible.builtin.include_tasks: "{{ tasks_file }}"
+EOF
+
+# role_tasks <task file> <unit dir> [-e k=v ...]: the role's defaults, then overrides.
+role_tasks() {
+  local file="$1" dir="$2"
   shift 2
   ANSIBLE_LOCALHOST_WARNING=false ANSIBLE_INVENTORY_UNPARSED_WARNING=false \
-    ansible localhost -i localhost, -c local -o \
-    -m ansible.builtin.template -a "src=$role/templates/$src dest=$dest" \
-    -e "@$role/defaults/main.yml" -e nix_system=x86_64-linux "$@" > "$work/ansible.log" 2>&1 \
+    ansible-playbook -i localhost, -c local "$work/play.yml" \
+    -e "@$role/defaults/main.yml" -e nix_system=x86_64-linux -e ansible_become=false \
+    -e "tasks_file=$role/tasks/$file" -e "nix_systemd_unit_dir=$dir" "$@" \
+    > "$work/ansible.log" 2>&1 \
     || { cat "$work/ansible.log"; exit 2; }
 }
 
@@ -57,7 +81,7 @@ enable() {
 host() {
   local name="$1" view="$2" dir="$work/$1"
   shift 2
-  mkdir -p "$dir/nix-daemon.service.d"
+  mkdir -p "$dir"
 
   # The installer links its units into /etc/systemd/system from the default
   # profile, which lives in /nix/store: on a union host that is the empty
@@ -67,18 +91,12 @@ host() {
   mkdir -p "$dir/sockets.target.wants"
   ln -s "$work/empty-nix-store/nix-daemon.socket" "$dir/sockets.target.wants/nix-daemon.socket"
 
-  # The role's units (union.yml, daemon_units.yml): its own daemon units over
-  # the installer's links, the union, and the daemon's drop-in.
-  local u
-  rm "$dir/sockets.target.wants/nix-daemon.socket"
-  for u in nix-daemon.service nix-daemon.socket nix-store.mount; do
-    rm -f "$dir/$u"
-    render "$u.j2" "$dir/$u" "$@"
-  done
+  # The role's units, from its own tasks: its daemon units over the installer's
+  # links, the union, and the daemon's drop-in. Then what union.yml's
+  # `enabled: true` links.
+  role_tasks daemon_units_boot_order.yml "$dir" "$@"
   enable "$dir" nix-store.mount
   enable "$dir" nix-daemon.socket
-  printf '[Unit]\nRequires=nix-store.mount\nAfter=nix-store.mount\n' \
-    > "$dir/nix-daemon.service.d/union-store.conf"
 
   # What systemd-fstab-generator writes for `<repo> <view> cvmfs defaults,_netdev`.
   if [ -n "$view" ]; then
@@ -123,18 +141,6 @@ unit() {
   awk -v u="$2" '/^\t→ Unit /{on = ($0 == "\t→ Unit " u ":")} on' "$work/$1/dump"
 }
 
-# expect <name> <what> <command...>: one assertion, ok or FAIL.
-expect() {
-  local name="$1" what="$2"
-  shift 2
-  if "$@"; then
-    printf 'ok   %s: %s\n' "$name" "$what"
-  else
-    printf 'FAIL %s: %s\n' "$name" "$what"
-    failures=$((failures + 1))
-  fi
-}
-
 no_cycle() {
   ! grep -qi 'ordering cycle' "$work/$1/log" \
     || { grep -i 'deleted to break' "$work/$1/log" | sed 's/^/       /'; false; }
@@ -150,31 +156,31 @@ lacks() { ! has "$@"; }
 boots_cleanly() {
   local name="$1"
   boot "$name"
-  expect "$name" "the boot transaction has no ordering cycle" no_cycle "$name"
-  expect "$name" "the union is not ordered before local-fs.target" \
+  check "$name: the boot transaction has no ordering cycle" no_cycle "$name"
+  check "$name: the union is not ordered before local-fs.target" \
     lacks "$name" nix-store.mount "Before: local-fs.target"
-  expect "$name" "the union mounts after network-online.target" \
+  check "$name: the union mounts after network-online.target" \
     has "$name" nix-store.mount "After: network-online.target"
-  expect "$name" "remote-fs.target waits for the union" \
+  check "$name: remote-fs.target waits for the union" \
     has "$name" remote-fs.target "After: nix-store.mount"
-  expect "$name" "the boot mounts the union" starts "$name" nix-store.mount
-  expect "$name" "the boot starts nix-daemon.socket" starts "$name" nix-daemon.socket
-  expect "$name" "nix-daemon.socket listens after the union" \
+  check "$name: the boot mounts the union" starts "$name" nix-store.mount
+  check "$name: the boot starts nix-daemon.socket" starts "$name" nix-daemon.socket
+  check "$name: nix-daemon.socket listens after the union" \
     has "$name" nix-daemon.socket "After: nix-store.mount"
-  expect "$name" "nix-daemon.service runs after the union" \
+  check "$name: nix-daemon.service runs after the union" \
     has "$name" nix-daemon.service "After: nix-store.mount"
-  expect "$name" "basic.target does not wait for the union (via sockets.target)" \
+  check "$name: basic.target does not wait for the union (via sockets.target)" \
     lacks "$name" sockets.target "After: nix-daemon.socket"
 }
 
 # The Publisher: the Lower Store is its client view (ADR 0004), a cvmfs mount.
 host publisher /cvmfs-client/nix.hayweb.org -e cvmfs_client_mountpoint=/cvmfs-client/nix.hayweb.org
 boots_cleanly publisher
-expect publisher "the union mounts after the client view" \
+check "publisher: the union mounts after the client view" \
   has publisher nix-store.mount 'After: cvmfs\x2dclient-nix.hayweb.org.mount'
 
 # A Canary over the stand-in Lower Store (spikes/union-standin.sh): a local path.
 host canary "" -e nix_lower_store=/srv/lower/nix
 boots_cleanly canary
 
-[ "$failures" -eq 0 ]
+[ "$fails" -eq 0 ]

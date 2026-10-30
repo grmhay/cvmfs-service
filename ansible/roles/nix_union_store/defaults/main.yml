@@ -51,6 +51,10 @@ nix_installer_url: "https://install.determinate.systems/nix/tag/v{{ nix_installe
 
 nix_rw_root: /nix/.rw-store
 
+# Where the role writes its systemd units. tests/union-mount-order.sh points it
+# at a scratch directory; on a host it is always /etc/systemd/system.
+nix_systemd_unit_dir: /etc/systemd/system
+
 # The Lower Store: a Nix store's /nix directory (store/ + var/nix/db), the RO
 # branch of the Union Store. Production is always the Repository's; a stand-in
 # directory lets the role run on a host with no Repository (spikes/union-standin.sh).

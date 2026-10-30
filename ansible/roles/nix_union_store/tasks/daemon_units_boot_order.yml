@@ -1,0 +1,68 @@
+---
+# Union Mode: install the union's mount unit and the daemon's units, ordered
+# so that both come up on their own at boot (#35). Unit files only: union.yml
+# reloads systemd once after this, checks the ordering and starts the units.
+# tests/union-mount-order.sh runs this file into a scratch unit directory
+# (nix_systemd_unit_dir) and boots the result in systemd's test mode.
+#
+# nix-store.mount is a network mount, in remote-fs.target: it waits for the
+# network and the client view, which come up after local-fs.target.
+#
+# The installer links nix-daemon.service and .socket from the default profile,
+# that is from /nix/store. With the union, /nix/store is an empty mountpoint
+# when systemd loads units at boot, so neither loads and the daemon stays down
+# until someone starts it. The role's own copies are plain files.
+
+- name: Install the nix-store.mount unit
+  become: true
+  ansible.builtin.template:
+    src: nix-store.mount.j2
+    dest: "{{ nix_systemd_unit_dir }}/nix-store.mount"
+    mode: "0644"
+
+- name: Install the daemon's units as files, not links into /nix/store
+  become: true
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "{{ nix_systemd_unit_dir }}/{{ item }}"
+    mode: "0644"
+    follow: false
+  loop:
+    - nix-daemon.service
+    - nix-daemon.socket
+
+- name: Ensure the drop-in directory exists
+  become: true
+  ansible.builtin.file:
+    path: "{{ nix_systemd_unit_dir }}/nix-daemon.service.d"
+    state: directory
+    mode: "0755"
+
+# The daemon alone opens the overlay store; nix.conf points clients at it
+# with store = daemon. % is doubled for systemd.
+- name: Run nix-daemon on the overlay store, after the union mount
+  become: true
+  ansible.builtin.copy:
+    dest: "{{ nix_systemd_unit_dir }}/nix-daemon.service.d/union-store.conf"
+    mode: "0644"
+    content: |
+      [Unit]
+      Requires=nix-store.mount
+      After=nix-store.mount
+
+      [Service]
+      ExecStart=
+      ExecStart=@/nix/var/nix/profiles/default/bin/nix-daemon nix-daemon --daemon --option store {{ nix_overlay_store_url | replace('%', '%%') }}
+  notify: Restart nix-daemon
+
+# Links from the earlier [Install] sections: nix-store.mount was in
+# multi-user.target, the installer's socket in sockets.target. union.yml's
+# enable tasks link them where their [Install] says now.
+- name: Remove the old install links
+  become: true
+  ansible.builtin.file:
+    path: "{{ nix_systemd_unit_dir }}/{{ item }}"
+    state: absent
+  loop:
+    - multi-user.target.wants/nix-store.mount
+    - sockets.target.wants/nix-daemon.socket
