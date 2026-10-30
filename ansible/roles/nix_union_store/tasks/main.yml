@@ -165,6 +165,11 @@
   ansible.builtin.include_tasks: union.yml
   when: cvmfs_nix_mode == "union" and not (_nix_union_deferred | default(false))
 
+# After nix.conf: in cache Mode the daemon restarts on the plain /nix/store.
+- name: Leave union Mode (a host moved to cache or thin)
+  ansible.builtin.include_tasks: leave_union.yml
+  when: cvmfs_nix_mode in ["cache", "thin"]
+
 - name: Cache-mode profile puller
   ansible.builtin.include_tasks: cache.yml
   when: cvmfs_nix_mode == "cache"

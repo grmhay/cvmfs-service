@@ -49,8 +49,12 @@
       register: _nix_upgrade
       changed_when: true
 
-    # The daemon's units are symlinks through the default profile, so they now
-    # come from the new Nix too: reload, then restart onto it.
+    # In cache Mode, and on a Publisher whose union is deferred, the daemon's
+    # units are the installer's links through the default profile, so they
+    # now come from the new Nix too. In union Mode they are files the role
+    # copied from the old Nix; the daemon runs the default profile's binary, so
+    # this restart moves it to the new Nix, and union.yml copies the new Nix's
+    # units later in this run, then restarts the daemon onto them.
     - name: Restart nix-daemon on the upgraded Nix
       ansible.builtin.systemd:
         name: nix-daemon.service

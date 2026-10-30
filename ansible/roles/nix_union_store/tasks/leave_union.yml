@@ -1,0 +1,101 @@
+---
+# A host moving out of union Mode, to cache or thin: #23's fallback (set the
+# host's Mode in NetBox and re-run; Soak criterion 6, #29). The union comes
+# down and its units go (leave_union_units.yml); union.yml puts them back when
+# the Mode returns to union. Nothing is deleted: in cache Mode the RW Branch
+# becomes the plain /nix/store again, which union.yml's first run moves
+# back; in thin Mode it stays where it is, under the bind of the Lower Store.
+# A host that never ran in union Mode skips all of it.
+
+- name: Is /nix/store a mergerfs union?
+  ansible.builtin.command: findmnt -n -o FSTYPE /nix/store
+  register: _leave_fstype
+  changed_when: false
+  failed_when: false
+
+- name: Look for the union's mount unit
+  ansible.builtin.stat:
+    path: "{{ nix_systemd_unit_dir }}/nix-store.mount"
+  register: _leave_unit
+
+- name: Take the union down
+  when: _leave_fstype.stdout == "fuse.mergerfs" or _leave_unit.stat.exists
+  become: true
+  block:
+    - name: Stop nix-daemon before the union
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        state: stopped
+      loop:
+        - nix-daemon.socket
+        - nix-daemon.service
+
+    - name: Unmount the union and drop it from the boot
+      ansible.builtin.systemd:
+        name: nix-store.mount
+        state: stopped
+        enabled: false
+  rescue:
+    - name: Start nix-daemon again on the union
+      ansible.builtin.systemd:
+        name: nix-daemon.socket
+        state: started
+
+    - name: The union could not be taken down
+      ansible.builtin.fail:
+        msg: >-
+          Moving {{ inventory_hostname }} to {{ cvmfs_nix_mode }} Mode needs /nix/store
+          unmounted, and stopping nix-store.mount failed (most likely a process still uses
+          /nix/store: fuser -vm /nix/store). Stop those processes, or reboot, then re-run.
+
+- name: Remove union Mode's units
+  ansible.builtin.include_tasks: leave_union_units.yml
+
+- name: Reload systemd onto the units without the union
+  become: true
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Back to a plain /nix/store (cache Mode)
+  when: cvmfs_nix_mode == "cache"
+  become: true
+  block:
+    # rmdir, not rm: the mountpoint is empty once the union is down, and
+    # anything else in it stops the move instead of being lost.
+    - name: Move the RW Branch back to /nix/store
+      ansible.builtin.shell: |
+        set -euo pipefail
+        if findmnt -n /nix/store > /dev/null; then
+          echo "/nix/store is still a mount point" >&2
+          exit 1
+        fi
+        rmdir /nix/store
+        mv {{ nix_rw_root }}/store /nix/store
+      args:
+        removes: "{{ nix_rw_root }}/store"
+        executable: /bin/bash
+      register: _leave_moved
+
+    # The overlay store's database also lists the Lower Store paths that the
+    # RW Branch's paths refer to, and those are not on the local disk. --repair fetches
+    # them from the substituters nix.conf now names (the Binary Cache first).
+    # Right after the move, not in a handler: the daemon starts on it next.
+    - name: Repair the store's database against its files  # noqa: no-handler
+      ansible.builtin.command: nix-store --verify --repair
+      environment:
+        PATH: /nix/var/nix/profiles/default/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      when: _leave_moved is changed
+      changed_when: true
+
+    - name: Start the daemon's socket on the plain /nix/store
+      ansible.builtin.systemd:
+        name: nix-daemon.socket
+        enabled: true
+        state: started
+
+    - name: The daemon serves the plain /nix/store
+      ansible.builtin.command: nix path-info --store daemon /nix/var/nix/profiles/default
+      environment:
+        PATH: /nix/var/nix/profiles/default/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      changed_when: false
+      when: not ansible_check_mode

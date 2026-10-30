@@ -17,7 +17,7 @@
   "customManagers": [
     {
       "customType": "regex",
-      "description": "Service flake inputs pinned by tag (github:grmhay/<repo>/vX.Y.Z). The nix manager only tracks their locked rev as git-refs, never the tag, so this is what proposes a tag bump. It edits flake.nix only: run `nix flake update <input>` on the PR to refresh flake.lock.",
+      "description": "Service flake inputs pinned by tag (github:grmhay/<repo>/vX.Y.Z). The nix manager only tracks their locked rev as git-refs, never the tag, so this is what proposes a tag bump. Its PRs bump flake.nix only, not flake.lock: before merging one, run `nix flake update <input>` on the PR's branch and push the new flake.lock to the PR, or master's lock still pins the old tag's rev.",
       "managerFilePatterns": ["/^flake\\.nix$/"],
       "matchStrings": ["\"github:(?<depName>grmhay/[^/\"]+)/(?<currentValue>v[^/\"]+)\""],
       "datasourceTemplate": "github-tags"

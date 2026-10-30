@@ -5,7 +5,7 @@
 # not a user's shell later.
 #
 # union, thin: the PATH entry itself, <client view>/profiles/<channel>/<group>/
-#   <system>/bin, resolved through the merged store or the bind mount.
+#   <system>/bin, resolved through the Union Store or the bind mount.
 # cache: PATH is the local fleet profile, which fleet-profile.timer fills from
 #   the Repository's Profile link, so the link must be published. Its store
 #   path is not local until the timer has run, so it is not followed.
@@ -17,7 +17,7 @@
 - name: The PATH target for this host
   ansible.builtin.set_fact:
     _nix_path_target: >-
-      {{ cvmfs_client_mountpoint }}/profiles/{{ nix_channel }}/{{ nix_group }}/{{ nix_system }}{{ '' if cvmfs_nix_mode == 'cache' else '/bin' }}
+      {{ nix_profile_link }}{{ '' if cvmfs_nix_mode == 'cache' else '/bin' }}
 
 - name: Check the PATH target
   when: (nix_path_target_check | bool) and not (_nix_union_deferred | default(false) | bool)
