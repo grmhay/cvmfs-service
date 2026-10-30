@@ -34,7 +34,7 @@ changed on any host. A row marked **unverified** could not be read today; its so
 | Canary sandbox settings | `nix_union_sandbox`/`nix_sandbox_fork` are still not in ansible-lab-config's group vars for `tag_nix_canary` (ansible-lab-config#122, open), so a `cvmfs: clients (canaries)` run would turn their sandbox off. Read from a 10-28 clone of ansible-lab-config |
 | Builders `pi5`, `pi6` | **Unverified**: SSH as `ansible` refuses the key. The Cache's logs suggest they fetch from the Repository |
 | Whitelist | Resigned unattended by `cvmfs-resign.service` (#19). The expiry alert (#20, homelab-opscontrolplane half) is not live |
-| Renovate | Not running: `renovate.json` exists, but no Renovate PR, onboarding PR or Dependency Dashboard on any grmhay repo (10-28). #25 |
+| Renovate | Not running: `renovate.json` exists, but no Renovate PR, onboarding PR or Dependency Dashboard on any grmhay repo (10-28). #25. Once it runs, a tag bump of a `grmhay/*` service input (the `customManagers` entry, #21) edits `flake.nix` only: run `nix flake update <input>` on the PR's branch and push `flake.lock` to the PR before merging it |
 | vm-service curl install | Never existed as automation: the only `curl` is vm-service's README. No `vm_service` binary on the Publisher, the Cache or the canaries (10-28). The service itself runs as a container on skyline |
 | First boot of new VMs | packer-service runs no Ansible; vm-service's post-create chain triggers Semaphore "Buildhost All", then "Verify Host". Nothing in that chain installs CVMFS or Nix (10-28) |
 | Cloud host `pinger` | **Unverified**: `pinger.hayweb.org` does not resolve from here and `pinger` is in neither ansible-lab-config inventory. Debian 12, x86_64 per #23. #27 |
