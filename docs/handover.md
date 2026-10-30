@@ -10,7 +10,7 @@ Repository yet.** The three Canary hosts still run their Union Store over the st
 
 **Since the Publisher's reboot at 10:41 on 2026-10-30, its own Union Store is down** (see the first row of
 the table). Publishing has not been affected so far only because nothing has changed on `master` since
-`dd9e3c1`.
+`dd9e3c1`. The fix is #35, on the integration branch `spec/0023-canaries-to-fleet`; it is not live yet.
 
 ## Live state (read over SSH on 2026-10-30, 11:29–11:35 MST)
 
@@ -19,7 +19,7 @@ changed on any host. A row marked **unverified** could not be read today; its so
 
 | Item | State on 2026-10-30 |
 |---|---|
-| Publisher: Union Store | **Down since the 10-30 10:41 reboot.** `systemd` found an ordering cycle (`local-fs.target` → `nix-store.mount` → `cvmfs\x2dclient-nix.hayweb.org.mount` → `network-online.target` → … → `local-fs.target`) and deleted the `nix-store.mount` start job. `/nix/store` is not mounted, so `nix-daemon.service` (a symlink into the profile under `/nix`) "could not be found". The client mount `/cvmfs-client/nix.hayweb.org` is up. Needs a ticket: the mount unit must not sit in `local-fs.target` while it needs a network mount. Not fixed here |
+| Publisher: Union Store | **Down since the 10-30 10:41 reboot.** `systemd` found an ordering cycle (`local-fs.target` → `nix-store.mount` → `cvmfs\x2dclient-nix.hayweb.org.mount` → `network-online.target` → … → `local-fs.target`) and deleted the `nix-store.mount` start job. `/nix/store` is not mounted, so `nix-daemon.service` (a symlink into the profile under `/nix`) "could not be found". The client mount `/cvmfs-client/nix.hayweb.org` is up. **#35**: fixed on `spec/0023-canaries-to-fleet` (the mount unit is a network mount, in `remote-fs.target`; the daemon's units are plain files), **live check pending**: two reboots with no ordering cycle once a collection tag carrying it is pinned and `cvmfs: publisher` has run. Its boot-order test, `tests/union-mount-order.sh`, runs only by hand under `nix develop` on a Debian 13 workstation (systemd 257): nixpkgs' systemd 262 does not reproduce the cycle, so it is not a flake check |
 | Publisher: repository mount | `cvmfs_server list` says `nix.hayweb.org (stratum0 / S3 - gw/mountless)`; `/cvmfs/nix.hayweb.org` is an empty directory after the reboot. Whether the next real Publish remounts it on its own is **unverified** |
 | Publisher: size | Configured as 4 vCPU / 12 GB (operator, 2026-10-30). The guest sees 4 vCPUs but `MemTotal` 8 138 012 kB (7.8 GiB) after the 10:41 reboot. Check the VM's memory and balloon settings in Proxmox before reading a recurring OOM as "12 GB is not enough" (#26) |
 | Publisher: timers | `cvmfs-publish.timer` every ~5 min; every run since 10-28 02:46 says `already published dd9e3c1c7940; nothing to do`. `cvmfs-resign.timer` next fires Mon 2026-11-02 03:00; it has not run since the reboot |

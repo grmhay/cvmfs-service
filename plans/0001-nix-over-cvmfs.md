@@ -233,7 +233,17 @@ host down at once.
   checks, and one host per OS/arch resolves a Profile binary from `profiles/stable/<group>/<system>`.
 - **Hosts that already run Nix:** only claudecourse (distro `nix-bin`). Its distro package and leftover
   build users go in the `base` Rollout, then the roles run. ansible-lab-config #32 and the #119 GC role are
-  superseded by the Union Store role's own GC timer.
+  superseded by the Union Store role's own GC timer. ansible-lab-config #123 stays open for the workstation
+  only.
+
+### Union Store boot order (#35)
+The union's mount unit is a network mount (in `remote-fs.target`, after `network-online.target`), and the
+daemon's units are plain-file copies of the installed Nix's, so both come up on their own at boot.
+`tests/union-mount-order.sh` checks this by booting the role's units with `systemd --test`. It is not a
+`nix flake check`: it needs the fleet's systemd (257, Debian 13 and RHEL 10), and nixpkgs' systemd (262)
+no longer orders a fuse mount before `local-fs.target`, so the cycle #35 fixed does not show there. Run it
+by hand, `nix develop -c bash tests/union-mount-order.sh` on a Debian 13 workstation, after any change to
+the role's units.
 
 ### Fallback
 A host that misbehaves in a Rollout falls back on its own: set its Mode to `cache` in NetBox and re-run the
