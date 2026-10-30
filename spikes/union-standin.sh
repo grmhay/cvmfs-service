@@ -25,6 +25,12 @@
 # pass -e nix_lower_store=... for another root). nix_union_check_path replaces
 # the role's final check that the daemon serves the published Group Profile,
 # which a stand-in does not have; -e nix_union_check_path= skips it.
+#
+# `-i <host>,` carries no NetBox host vars, so the profile.d PATH it writes
+# follows the role defaults (channel stable, group base), and the PATH check is
+# off. This is how the Canary hosts came to point at profiles/stable (#28).
+# Moving a host onto the Repository is a client role run from the NetBox
+# inventory (playbooks/clients.yml), which remounts the union on it.
 set -euo pipefail
 
 root="${1:-/srv/lower}"

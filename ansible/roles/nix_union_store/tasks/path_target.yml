@@ -1,0 +1,41 @@
+---
+# Before /etc/profile.d/cvmfs-nix.sh is written: the PATH it sets must exist
+# for this host's Channel and Group (#28). A Profile that is not published (a
+# Group with no Profile, or `stable` before its Promote) fails the play here,
+# not a user's shell later.
+#
+# union, thin: the PATH entry itself, <client view>/profiles/<channel>/<group>/
+#   <system>/bin, resolved through the merged store or the bind mount.
+# cache: PATH is the local fleet profile, which fleet-profile.timer fills from
+#   the Repository's Profile link, so the link must be published. Its store
+#   path is not local until the timer has run, so it is not followed.
+#
+# Skipped while the Publisher's union is deferred (its first run, before any
+# publish: tasks/lower_store.yml), and when nix_path_target_check is false
+# (a stand-in Lower Store has no Profiles: spikes/union-standin.yml).
+
+- name: The PATH target for this host
+  ansible.builtin.set_fact:
+    _nix_path_target: >-
+      {{ cvmfs_client_mountpoint }}/profiles/{{ nix_channel }}/{{ nix_group }}/{{ nix_system }}{{ '' if cvmfs_nix_mode == 'cache' else '/bin' }}
+
+- name: Check the PATH target
+  when: (nix_path_target_check | bool) and not (_nix_union_deferred | default(false) | bool)
+  block:
+    - name: Look for the PATH target
+      ansible.builtin.stat:
+        path: "{{ _nix_path_target }}"
+        follow: false
+        get_checksum: false
+      register: _path_target
+
+    - name: The PATH target exists for this host's Channel and Group
+      ansible.builtin.assert:
+        that: _path_target.stat.exists
+        fail_msg: >-
+          {{ _nix_path_target }} does not exist, so the PATH that /etc/profile.d/cvmfs-nix.sh
+          sets for {{ inventory_hostname }} (channel={{ nix_channel }} group={{ nix_group }}
+          system={{ nix_system }}, mode {{ cvmfs_nix_mode }}) would point at nothing. Publish the
+          {{ nix_group }} Profile to canary, or Promote it to stable, before this host uses it; or
+          correct the host's nix_channel / nix_group in NetBox.
+        quiet: true
