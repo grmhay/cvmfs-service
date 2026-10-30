@@ -6,5 +6,10 @@
   vars:
     cvmfs_nix_mode: union
     nix_lower_store: /srv/lower/nix
+    # A stand-in has no Profiles, so no PATH target to check (#28). Its
+    # profile.d entry points at the role's default Channel, stable, which
+    # this inventory-less run cannot know: re-run the client role for the host
+    # from the NetBox inventory before it reads the Repository.
+    nix_path_target_check: false
   roles:
     - nix_union_store
