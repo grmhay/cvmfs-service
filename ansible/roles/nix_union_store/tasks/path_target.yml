@@ -17,7 +17,7 @@
 - name: The PATH target for this host
   ansible.builtin.set_fact:
     _nix_path_target: >-
-      {{ cvmfs_client_mountpoint }}/profiles/{{ nix_channel }}/{{ nix_group }}/{{ nix_system }}{{ '' if cvmfs_nix_mode == 'cache' else '/bin' }}
+      {{ nix_profile_link }}{{ '' if cvmfs_nix_mode == 'cache' else '/bin' }}
 
 - name: Check the PATH target
   when: (nix_path_target_check | bool) and not (_nix_union_deferred | default(false) | bool)

@@ -69,7 +69,7 @@
 - name: Remount the union on the Lower Store
   when: >-
     _union_branches is not skipped
-    and _union_branches.stdout != nix_rw_root ~ '/store=RW:' ~ nix_lower_store ~ '/store=RO'
+    and _union_branches.stdout != nix_union_branches
   become: true
   block:
     - name: Stop nix-daemon before the remount

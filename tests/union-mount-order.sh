@@ -182,5 +182,7 @@ check "publisher: the union mounts after the client view" \
 # A Canary over the stand-in Lower Store (spikes/union-standin.sh): a local path.
 host canary "" -e nix_lower_store=/srv/lower/nix
 boots_cleanly canary
+check "canary: the union is the RW Branch over the stand-in Lower Store" \
+  grep -qx 'What=/nix/.rw-store/store=RW:/srv/lower/nix/store=RO' "$work/canary/nix-store.mount"
 
 [ "$fails" -eq 0 ]
