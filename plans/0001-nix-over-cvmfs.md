@@ -23,7 +23,7 @@ MinIO as origin, an nginx cache in the homelab, and a Nix daemon still usable on
 | Groups | `base` (everyone, incl. Pis), `docker-host`, `proxmox-node`, `cloud`, `builder`. |
 | Canary | `pi7`, `nixcanary-deb1` (Debian 13), `nixcanary-rhel1` (RHEL 10). |
 | Builders | `pi5`, `pi6` (aarch64) as Nix remote builders of the publisher; `nixbuild` user, key in SOPS. |
-| Publisher | New Proxmox VM, Debian 13 x86_64, 4 vCPU / 8 GB / 100 GB. |
+| Publisher | New Proxmox VM, Debian 13 x86_64, 4 vCPU / 12 GB / 100 GB (raised from 8 GB after the 2026-10-27 OOM kill; see Amendments). |
 | Origin | Existing MinIO (TrueNAS app on `filer1`, hand-built). Renamed to `minio.hayweb.org` with a Let's Encrypt cert issued by skyline's Caddy (name.com DNS-01) and pushed to the TrueNAS API by a small pusher stack in the ops repo. Loki (hand-managed on pi2) cut over in the same window. Bucket/policy/key created by runbook; roles only verify. |
 | Cache | Dedicated VM `cache1.hayweb.org`, Debian 13, 2 vCPU / 4 GB / 120 GB, nginx reverse cache (`max_size` 100 GB), plain HTTP. Cloud hosts use it directly over OpenVPN (internal DNS pushed); per-cloud caches are a documented later upgrade. |
 | Trigger | Publisher pulls `cvmfs-service` master every 5 min, publishes when inputs changed (reconciler pattern). Self-hosted runner later. |
@@ -33,7 +33,7 @@ MinIO as origin, an nginx cache in the homelab, and a Nix daemon still usable on
 | Local GC | Weekly `nix-collect-garbage --delete-older-than 30d` timer + `min-free`/`max-free`. |
 | TTL / quota | `CVMFS_REPOSITORY_TTL` default (4 min). `CVMFS_QUOTA_LIMIT`: Pis 10 GB, VMs 20 GB, cloud 20 GB, builders/publisher 50 GB (role vars). |
 | Inventory | NetBox is source of truth: tags `nix-builder`, `nix-canary`; custom field `nix_group`, `nix_channel`; `ansible-lab-config` consumes via `netbox.netbox.nb_inventory` (migration is a Phase-0 prerequisite if not already in place). Role delivered via `requirements.yml` git tag. |
-| Packer | Debian 13 and RHEL 10 templates bake cvmfs client, mergerfs, Nix, and static role config. |
+| Packer | ~~Debian 13 and RHEL 10 templates bake cvmfs client, mergerfs, Nix, and static role config.~~ Dropped 2026-10-30: new VMs join through vm-service's post-create chain (see Amendments). |
 | Secrets | Anonymous-read bucket OK (CVMFS signs). MinIO rw key, repo master key, `nixbuild` key, TrueNAS API key in SOPS, same age recipient as the ops repo. Master key decrypted only during `resign`. |
 | Repo | `github.com/grmhay/cvmfs-service`, public. PRD via `/to-prd` → `/to-issues` once the repo exists; ADRs lazily. |
 | Out of scope | Caddy redundancy for skyline's public ingress (Q34=C) — separate follow-up. |
@@ -102,7 +102,7 @@ cvmfs-service/
 Related changes in other repos:
 - `homelab-opscontrolplane`: Caddy gets `minio.hayweb.org` (DNS-01); new stack `truenas-cert-pusher` (watches the cert, calls TrueNAS API; API key in `secrets/prod/truenas.enc.yaml`).
 - `ansible-lab-config`: NetBox dynamic inventory (if not already), `requirements.yml` entry for the cvmfs-service roles, Semaphore jobs.
-- `packer-service`: provisioner step in `deploy/packer-proxmox-debian13` and `-rhel10` running `cvmfs_client` + `nix_union_store` in "bake" mode (no channel/group yet).
+- ~~`packer-service`: provisioner step in `deploy/packer-proxmox-debian13` and `-rhel10` running `cvmfs_client` + `nix_union_store` in "bake" mode (no channel/group yet).~~ Dropped (Amendments): `vm-service`'s post-create chain runs the client roles instead.
 - NetBox: tags `nix-builder`, `nix-canary`; custom fields `nix_group`, `nix_channel`; set on pi5/pi6, pi7, the canary VMs.
 
 ## Server side
@@ -160,9 +160,9 @@ static fstab mount `nix.hayweb.org /cvmfs/nix.hayweb.org cvmfs defaults,_netdev 
    NetBox tags/fields + dynamic inventory in `ansible-lab-config`; MinIO rename + LE cert via Caddy + TrueNAS pusher stack (ops repo) + Loki cutover (runbook, same window); bucket/policy/key runbook.
    **Spikes** on throwaway VMs: S1 packages (`cvmfs`, `cvmfs-server`, mergerfs on Debian 13 arm64 / RHEL 10 aarch64; MinIO S3 API port); S2 mergerfs union + `local-overlay-store` (mmap/`cache.files`, exec latency, revision flip while binaries run, local build + GC); S3 `cvmfs_server mkfs` against MinIO (reflog/`.cvmfspublished` pitfalls). Write ADRs 0001–0003.
 1. **Origin**: publisher VM; repo created; `profile-base` published for both systems; verified from the publisher's own client mount.
-2. **Distribution**: `cache1` VM + role; `cvmfs_client` + `nix_union_store` roles; `nixcanary-deb1`, `nixcanary-rhel1`, `pi7` on `canary`; builders `pi5`/`pi6` wired; canary soak.
-3. **Fleet**: packer bake step; roles via `requirements.yml`; Semaphore job; `base` promoted to `stable`; rollout by group. `vm-service` added as a flake input → `profile-docker-host`/wherever it runs; retire the curl-from-GitHub install.
-4. **Cloud**: cloud hosts join (OpenVPN + pushed DNS already in place); `cloud` group.
+2. **Distribution**: `cache1` VM + role; `cvmfs_client` + `nix_union_store` roles; `nixcanary-deb1`, `nixcanary-rhel1`, `pi7` on `canary`; builders `pi5`/`pi6` wired; the Soak (Amendments).
+3. **Fleet**: roles via `requirements.yml`; a client-roles Semaphore template with a host limit given at launch; a Promote per Group, each followed by that Group's Rollout in two waves (Amendments). `vm-service` added as a flake input → `profile-docker-host`. ~~packer bake step~~ and ~~retire the curl-from-GitHub install~~ are dropped (Amendments).
+4. **Cloud**: last, after every on-prem Group. `pinger` is upgraded to Debian 13 first, then joins (OpenVPN + pushed DNS already in place); `cloud` group (Amendments).
 5. **Automation & ops**: publish reconciler timer; promote flow; Renovate; resign timer; alloy ships `cvmfs_config stat` + nginx `$upstream_cache_status` to Loki/Grafana + dashboard in ops repo; runbooks (abort, resign, gc, cert cutover).
 
 ## Verification
@@ -174,3 +174,87 @@ static fstab mount `nix.hayweb.org /cvmfs/nix.hayweb.org cvmfs defaults,_netdev 
 - Cache: second host fetching the same closure logs `HIT` on cache1; cloud host over OpenVPN resolves `cache1.hayweb.org` internally and probes OK.
 - Both arches/OSes: all checks on pi7 (aarch64 Debian), `nixcanary-deb1`, `nixcanary-rhel1`.
 - Fallback: flip one canary to `cvmfs_nix_mode=cache`; `fleet-profile.timer` installs the group profile from `file:///cvmfs/…/cache`.
+
+## Amendments 2026-10-30 (spec #23)
+
+Decisions made after Phase 1, recorded here so the plan and the tickets of #23 agree. Where they conflict
+with the sections above, these win. Live state behind them: `docs/handover.md`.
+
+### Changed assumptions
+- **Packer.** The packer bake step is dropped. packer-service runs no Ansible, and the roles have no bake
+  mode. A new VM joins the Repository on first boot through vm-service's **post-create chain**: after its
+  existing build-host templates ("Buildhost All", then "Verify Host"), it runs the client roles. This
+  starts only once `base` is on `stable`, so a new VM never lands on a dangling PATH.
+- **vm-service.** There is no curl install of vm-service to retire: no automation ever installed it that
+  way (the only `curl` is in vm-service's README), so that item is dropped. vm-service still enters as a
+  pinned flake input and its CLI joins the `docker-host` Profile (#21); a collision with `base` fails the
+  build.
+- **Publisher.** 4 vCPU / 12 GB / 100 GB. The 2026-10-27 OOM kill is diagnosed from the journal first; the
+  build parallelism is capped only if it recurs at 12 GB. A failed fetch from GitHub is retried a bounded
+  number of times before the run fails (#26).
+- **Renovate** was not running; the app is enabled on this repo (#25). The existing config stands.
+
+### Soak
+The Soak is a gate, not a duration. It starts when all three Canary hosts mount the Repository through the
+Cache, with the Repository's Lower Store under their Union Store and PATH on their `canary` Channel (#28).
+It ends when the operator signs off on its ticket (#29) that every exit criterion holds:
+
+1. at least 7 days on the Repository;
+2. at least 3 Publishes reaching all three Canary hosts without a remount or a restart;
+3. a revision flip under load: a process from the old Profile keeps running, new lookups resolve, and no
+   ESTALE/ENOENT appears in `dmesg` or the application's logs (ADR 0002's core claim, outside the spike);
+4. the CVMFS cache at or under its quota;
+5. a local build plus GC that touches only the RW Branch and leaves the Lower Store untouched;
+6. one Canary host flipped to cache Mode, its Profile installed from the Binary Cache, and flipped back to
+   union Mode.
+
+The Verification list above stays a Soak requirement; a Rollout does not repeat it. **Why:** the Soak is the
+only place the whole design runs on real hosts before the fleet depends on it, and criterion 6 proves the
+fallback every Rollout relies on.
+
+### Gates before the first Rollout
+No host other than the Canary hosts and the Builders moves onto the Repository until all of these hold:
+the Soak is signed off; the whitelist-expiry alert (fewer than 10 days left) and the failed-probe alert are
+live (#20); every host has an explicit `nix_group` in NetBox, so nothing rolls out as `base` by default
+(#30); and one Semaphore template runs the client roles against a host list given at launch (the canary
+template stays as it is). **Why:** once the fleet reads the Repository, an expired whitelist takes every
+host down at once.
+
+### Promote per Group and Rollout
+- **Promote per Group.** `stable` moves for one Group immediately before that Group's Rollout. There is no
+  fleet-wide Promote, so `stable` only moves for Groups about to have `stable` hosts.
+- **Order:** `base` (base-only VMs and Pis), then `docker-host` and `proxmox-node`, then `cloud`. The
+  `docker-host` Rollout also needs the vm-service CLI in its Profile (#21).
+- **Two waves.** The first wave is one host per OS/arch combination in the Group; for `proxmox-node` it is
+  the whole Saddlehorn cluster (labserver5..7), so a cluster-wide effect shows on the older PVE 8 cluster
+  first. The second wave is the rest of the Group, 24 hours after the first, so a problem has a day to
+  show. labserver3 and labserver4 are being decommissioned and are left out.
+- **Done** when the client run is green on every host in the Group, with the role's own probe and mount
+  checks, and one host per OS/arch resolves a Profile binary from `profiles/stable/<group>/<system>`.
+- **Hosts that already run Nix:** only claudecourse (distro `nix-bin`). Its distro package and leftover
+  build users go in the `base` Rollout, then the roles run. ansible-lab-config #32 and the #119 GC role are
+  superseded by the Union Store role's own GC timer. ansible-lab-config #123 stays open for the workstation
+  only.
+
+### Union Store boot order (#35)
+The union's mount unit is a network mount (in `remote-fs.target`, after `network-online.target`), and the
+daemon's units are plain-file copies of the installed Nix's, so both come up on their own at boot.
+`tests/union-mount-order.sh` checks this by booting the role's units with `systemd --test`. It is not a
+`nix flake check`: it needs the fleet's systemd (257, Debian 13 and RHEL 10), and nixpkgs' systemd (262)
+no longer orders a fuse mount before `local-fs.target`, so the cycle #35 fixed does not show there. Run it
+by hand, `nix develop -c bash tests/union-mount-order.sh` on a Debian 13 workstation, after any change to
+the role's units.
+
+### Fallback
+A host that misbehaves in a Rollout falls back on its own: set its Mode to `cache` in NetBox and re-run the
+client roles for that host. No code change. Every fallback is recorded twice: a NetBox journal entry on
+the host (when, why, a link to the Rollout ticket) and a comment on the Rollout ticket. A Rollout ticket
+closes only when each fallback host is back in union Mode or has its own follow-up issue. A role that
+removes CVMFS and Nix from a host is out of scope.
+
+### Cloud last
+Cloud is the last Rollout, after every on-prem Group. `pinger` (Google Cloud, x86_64, Debian 12 today) is
+upgraded to Debian 13 first; Debian 12 support is not added. It is then registered in NetBox as
+`cloud`/`stable`, checked for VPN, DNS resolution of the Cache over the VPN, Semaphore SSH and at least
+20 GB free, and `verify-origin` passes from it (closing #4). Then `cloud` is Promoted and rolled out; one
+host is both waves (#27, #34).

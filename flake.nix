@@ -7,8 +7,10 @@
 
     ## Service packages enter the fleet as pinned flake inputs (ADR 0001).
     ## Renovate bumps the tag; the publisher builds and publishes the result.
-    ## Enabled in phase 3:
-    # vm-service.url = "github:grmhay/vm-service/v0.1.0";
+    ## vm-service keeps its own nixpkgs: its build runs its lint gate, and our
+    ## newer ruff fails v0.1.0 on rules it did not ship with.
+    vm-service.url = "github:grmhay/vm-service/v0.1.0";
+    vm-service.inputs.flake-utils.follows = "flake-utils";
   };
 
   outputs = { self, nixpkgs, flake-utils, ... }@inputs:
@@ -84,6 +86,10 @@
         ## evaluates them for the other one (CI has no aarch64 builders;
         ## the Publisher does the real aarch64 build before publishing).
         checks = profiles // {
+          ## The docker-host Profile carries vm-service's CLI and it runs.
+          docker-host-vm-service = pkgs.runCommand "docker-host-vm-service" { } ''
+            ${profiles.profile-docker-host}/bin/vm_service --help > $out
+          '';
           ## The whitelist parser's tests (#20) run with busybox alone on PATH,
           ## because the probe container that runs it has no GNU userland either.
           whitelist-expiry = pkgs.runCommand "whitelist-expiry-tests" { } ''
@@ -100,6 +106,18 @@
               chmod +x cvmfs-resign.sh cvmfs-resign-test.sh
               patchShebangs .
               HOME="$TMPDIR" ./cvmfs-resign-test.sh ./cvmfs-resign.sh
+              touch $out
+            '';
+          ## The publish reconciler's git fetch retry (#26), with stub git and nix:
+          ## a fetch that fails then succeeds publishes; one that keeps failing fails the run.
+          reconcile-publish = pkgs.runCommand "reconcile-publish-test"
+            { nativeBuildInputs = [ pkgs.bash pkgs.coreutils pkgs.gnugrep pkgs.util-linux ]; }
+            ''
+              cp ${./publish/reconcile-publish.sh} reconcile-publish.sh
+              cp ${./tests/reconcile-publish-test.sh} reconcile-publish-test.sh
+              chmod +x reconcile-publish.sh reconcile-publish-test.sh
+              patchShebangs .
+              HOME="$TMPDIR" ./reconcile-publish-test.sh ./reconcile-publish.sh
               touch $out
             '';
         };

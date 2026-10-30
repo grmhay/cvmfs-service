@@ -1,0 +1,107 @@
+---
+# Union Mode: install the union's mount unit and the daemon's units, ordered
+# so that both come up on their own at boot (#35). Unit files only: union.yml
+# reloads systemd once after this, checks the ordering and starts the units.
+# tests/union-mount-order.sh runs this file into a scratch unit directory
+# (nix_systemd_unit_dir) and boots the result in systemd's test mode.
+#
+# nix-store.mount is a network mount, in remote-fs.target: it waits for the
+# network and the client view, which come up after local-fs.target.
+#
+# The installer links nix-daemon.service and .socket from the default profile,
+# that is from /nix/store. With the union, /nix/store is an empty mountpoint
+# when systemd loads units at boot, so neither loads and the daemon stays down
+# until someone starts it. So the role writes the installed Nix's own units as
+# plain files, read from the default profile while /nix/store is readable, and
+# makes its changes in drop-ins. Every union run writes them again, so after
+# `nix upgrade-nix` (upgrade.yml) the same run moves them to the new Nix's.
+# Expects /nix/store readable: union.yml includes this before a first run
+# moves the installer's store to the RW Branch, or with the union mounted.
+
+- name: Install the nix-store.mount unit
+  become: true
+  ansible.builtin.template:
+    src: nix-store.mount.j2
+    dest: "{{ nix_systemd_unit_dir }}/nix-store.mount"
+    mode: "0644"
+
+- name: Read the installed Nix's daemon units
+  ansible.builtin.slurp:
+    src: "{{ nix_installed_units_dir }}/{{ item }}"
+  loop:
+    - nix-daemon.service
+    - nix-daemon.socket
+  register: _nix_installed_units
+
+# follow: false replaces the installer's link with the file.
+- name: Install the daemon's units as files, not links into /nix/store
+  become: true
+  ansible.builtin.copy:
+    content: "{{ _header ~ (item.content | b64decode) }}"
+    dest: "{{ nix_systemd_unit_dir }}/{{ item.item }}"
+    mode: "0644"
+    follow: false
+  loop: "{{ _nix_installed_units.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  vars:
+    _header: |
+      # Managed by cvmfs-service (role nix_union_store): the installed Nix's
+      # {{ item.item }}, as a file systemd can load before /nix/store is mounted (#35).
+  notify: Restart nix-daemon
+
+- name: Drop-in directories for the daemon's units
+  become: true
+  ansible.builtin.file:
+    path: "{{ nix_systemd_unit_dir }}/{{ item }}.d"
+    state: directory
+    mode: "0755"
+  loop:
+    - nix-daemon.service
+    - nix-daemon.socket
+
+# The daemon alone opens the overlay store; nix.conf points clients at it
+# with store = daemon. % is doubled for systemd.
+- name: Run nix-daemon on the overlay store, after the union mount
+  become: true
+  ansible.builtin.copy:
+    dest: "{{ nix_systemd_unit_dir }}/nix-daemon.service.d/union-store.conf"
+    mode: "0644"
+    content: |
+      [Unit]
+      Requires=nix-store.mount
+      After=nix-store.mount
+
+      [Service]
+      ExecStart=
+      ExecStart=@/nix/var/nix/profiles/default/bin/nix-daemon nix-daemon --daemon --option store {{ nix_overlay_store_url | replace('%', '%%') }}
+  notify: Restart nix-daemon
+
+# The socket's RequiresMountsFor=/nix/store orders it after the union, which
+# waits for the network. With default dependencies it is also ordered before
+# sockets.target, so basic.target, and every service on the host, would wait
+# for the network with it. Its [Install] still puts it in sockets.target.wants:
+# pulled in at boot, but nothing waits for it.
+- name: Order the daemon's socket out of sockets.target
+  become: true
+  ansible.builtin.copy:
+    dest: "{{ nix_systemd_unit_dir }}/nix-daemon.socket.d/union-store.conf"
+    mode: "0644"
+    content: |
+      [Unit]
+      DefaultDependencies=no
+      After=sysinit.target
+      Before=shutdown.target
+      Conflicts=shutdown.target
+
+# Links from earlier [Install] sections, both in multi-user.target: the
+# union's before #35, the role's own socket's from #35's first form. union.yml's
+# enable tasks link them where their [Install] says now.
+- name: Remove the old install links
+  become: true
+  ansible.builtin.file:
+    path: "{{ nix_systemd_unit_dir }}/multi-user.target.wants/{{ item }}"
+    state: absent
+  loop:
+    - nix-store.mount
+    - nix-daemon.socket

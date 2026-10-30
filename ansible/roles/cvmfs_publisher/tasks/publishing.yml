@@ -29,6 +29,29 @@
     mode: "0600"
   no_log: true
 
+# The publish fetches the private vm-service input (#37). Flake inputs are
+# fetched by the client, so the token goes in the publisher user's own
+# nix.conf, not in the world-readable drop-in under /etc/nix.
+- name: Nix user config directory
+  become: true
+  ansible.builtin.file:
+    path: "{{ publisher_home }}/{{ item }}"
+    state: directory
+    owner: "{{ publisher_user }}"
+    mode: "0700"
+  loop:
+    - .config
+    - .config/nix
+
+- name: GitHub token for private flake inputs
+  become: true
+  ansible.builtin.copy:
+    content: "access-tokens = github.com={{ publisher_secrets.github_access_token | trim }}\n"
+    dest: "{{ publisher_home }}/.config/nix/nix.conf"
+    owner: "{{ publisher_user }}"
+    mode: "0600"
+  no_log: true
+
 - name: Ssh config for builders
   become: true
   ansible.builtin.template:

@@ -1,16 +1,27 @@
 # Managed by cvmfs-service (role nix_union_store). Unit name must be the
 # escaped mount path: /nix/store -> nix-store.mount.
+#
+# A network mount (#35). systemd takes a fuse.mergerfs mount for a local
+# filesystem and orders it Before=local-fs.target, but the network comes up
+# after local-fs.target and this union waits for it and for the client view (a
+# _netdev cvmfs mount), so the boot looped and systemd dropped a job to break
+# it. With no default dependencies it is ordered the way systemd orders a
+# _netdev mount: after the network, in remote-fs.target. The ordering is the
+# same over a local stand-in Lower Store. tests/union-mount-order.sh boots it.
 [Unit]
 Description=Nix union store (mergerfs over {{ cvmfs_repository }})
+DefaultDependencies=no
 RequiresMountsFor={{ nix_lower_store | dirname }} {{ nix_rw_root }}
-After=network-online.target
 Wants=network-online.target
+After=network-online.target remote-fs-pre.target
+Before=remote-fs.target umount.target
+Conflicts=umount.target
 
 [Mount]
-What={{ nix_rw_root }}/store=RW:{{ nix_lower_store }}/store=RO
+What={{ nix_union_branches }}
 Where=/nix/store
 Type=fuse.mergerfs
 Options={{ mergerfs_options }}
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=remote-fs.target

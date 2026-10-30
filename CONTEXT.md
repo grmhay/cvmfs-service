@@ -84,10 +84,23 @@ _Avoid_: build node, worker, agent
 A host on the `canary` Channel: `pi7`, `nixcanary-deb1`, `nixcanary-rhel1` (NetBox tag `nix-canary`).
 _Avoid_: test host, staging host
 
+**Soak**:
+The period the Canary hosts run on the Repository before any other host moves onto it. It ends when the
+operator signs off its exit criteria (days on the Repository, Publishes survived, no stale entries, quota
+held), not when a date passes.
+_Avoid_: burn-in, bake, trial
+
+**Rollout**:
+Moving one Group's `stable` hosts onto the Repository, just after that Group is Promoted. Two waves: the
+first wave is one host per OS/arch combination in the Group (for `proxmox-node`, the Saddlehorn cluster);
+the second wave is the rest of the Group, 24 hours later.
+_Avoid_: deploy, release, migration
+
 ## Relationships
 
 - The **Publisher** builds a **Profile** per **Group** and system, using the **Builders** for aarch64
 - A **Publish** writes to the **Repository** via the **Origin**; clients read it via the **Cache**
 - Every host mounts the **Repository**; in union **Mode** its **Union Store** = **RW Branch** ∪ **Lower Store**
 - A host's PATH follows one **Channel** and one **Group**; **Promote** moves `stable` to `canary`'s Profiles
+- A **Group**'s **Rollout** waits for the **Soak**; it starts with a **Promote** of that Group
 - The **Binary Cache** mirrors the **Lower Store** for hosts in cache **Mode**
