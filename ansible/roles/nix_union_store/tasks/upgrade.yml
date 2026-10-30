@@ -75,7 +75,9 @@
 # Every run, upgrade or not: a daemon still on an older Nix than the profile
 # (a restart that failed after an earlier upgrade) is restarted onto it. The
 # full release string is compared, so a fork build (2.30.0+chrootfix) is not
-# mistaken for a stale daemon.
+# mistaken for a stale daemon. A daemon that does not answer (its socket down,
+# as after a failed socket start) runs no Nix at all: the socket start later in
+# the role brings it up on the installed one.
 - name: The daemon runs the installed Nix
   become: true
   environment:
@@ -85,6 +87,7 @@
       ansible.builtin.command: nix store info --store daemon
       register: _nix_daemon_info
       changed_when: false
+      failed_when: false
       check_mode: false
 
     - name: Restart nix-daemon onto the installed Nix
@@ -95,7 +98,8 @@
       register: _nix_daemon_restart
       # nix store info prints to stderr on some Nix releases
       when: >-
-        ('Version: ' ~ _nix_installed_release)
+        _nix_daemon_info.rc == 0
+        and ('Version: ' ~ _nix_installed_release)
         not in _nix_daemon_info.stdout_lines + _nix_daemon_info.stderr_lines
 
     - name: Re-read the daemon's Nix version after the restart
