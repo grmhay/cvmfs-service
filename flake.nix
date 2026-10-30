@@ -102,6 +102,18 @@
               HOME="$TMPDIR" ./cvmfs-resign-test.sh ./cvmfs-resign.sh
               touch $out
             '';
+          ## The publish reconciler's git fetch retry (#26), with stub git and nix:
+          ## a fetch that fails then succeeds publishes; one that keeps failing fails the run.
+          reconcile-publish = pkgs.runCommand "reconcile-publish-test"
+            { nativeBuildInputs = [ pkgs.bash pkgs.coreutils pkgs.gnugrep pkgs.util-linux ]; }
+            ''
+              cp ${./publish/reconcile-publish.sh} reconcile-publish.sh
+              cp ${./tests/reconcile-publish-test.sh} reconcile-publish-test.sh
+              chmod +x reconcile-publish.sh reconcile-publish-test.sh
+              patchShebangs .
+              HOME="$TMPDIR" ./reconcile-publish-test.sh ./reconcile-publish.sh
+              touch $out
+            '';
         };
       })
     // flake-utils.lib.eachDefaultSystem (system:
