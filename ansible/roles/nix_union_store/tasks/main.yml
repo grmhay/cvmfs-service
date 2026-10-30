@@ -173,6 +173,9 @@
   ansible.builtin.include_tasks: thin.yml
   when: cvmfs_nix_mode == "thin"
 
+- name: The Group Profile is published for this host's Channel and Group
+  ansible.builtin.include_tasks: path_target.yml
+
 - name: Put the Group Profile on PATH
   become: true
   ansible.builtin.template:

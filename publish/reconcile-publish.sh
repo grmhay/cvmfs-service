@@ -5,6 +5,10 @@
 # user, gate on the last SUCCESSFULLY published revision (not the checkout),
 # so a failed publish retries on the next tick without a new commit.
 #
+# A failed git fetch (a GitHub timeout, #26) is tried PUBLISH_FETCH_TRIES
+# times in all (default 3), PUBLISH_FETCH_PAUSE seconds apart (default 30),
+# before the run fails; the lock is held throughout.
+#
 # Usage: reconcile-publish.sh
 set -euo pipefail
 
@@ -13,6 +17,8 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 state_dir="${PUBLISH_STATE_DIR:-$HOME/.local/state/cvmfs-publish}"
 published_file="$state_dir/published"
 lock="${PUBLISH_LOCK:-/tmp/cvmfs-publish.lock}"
+fetch_tries="${PUBLISH_FETCH_TRIES:-3}"
+fetch_pause="${PUBLISH_FETCH_PAUSE:-30}"
 
 log() { printf '%s reconcile-publish: %s\n' "$(date -Is)" "$*"; }
 
@@ -23,7 +29,16 @@ if ! flock -n 9; then
 fi
 
 cd "$repo_root"
-git fetch --quiet origin "$branch"
+try=1
+until git fetch --quiet origin "$branch"; do
+  if [ "$try" -ge "$fetch_tries" ]; then
+    log "FAILED: git fetch origin $branch failed $try times; next run will retry"
+    exit 1
+  fi
+  log "git fetch origin $branch failed (try $try of $fetch_tries); retrying in ${fetch_pause}s"
+  sleep "$fetch_pause"
+  try=$((try + 1))
+done
 remote_rev="$(git rev-parse "origin/$branch")"
 
 mkdir -p "$state_dir"

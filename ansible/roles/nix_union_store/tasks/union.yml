@@ -30,6 +30,52 @@
     mode: "0644"
   notify: Reload systemd
 
+# A union already mounted on other branches (a Canary over the stand-in Lower
+# Store, #28) keeps them until it is remounted: a new unit file, a daemon
+# reload and `state: started` all leave a mounted mount as it is. The daemon's
+# drop-in below would then open the Repository's database over the stand-in's
+# files. mergerfs reports its live branches in an xattr on its control file.
+- name: Read the mounted union's branches
+  become: true
+  ansible.builtin.command: >-
+    {{ ansible_facts.python.executable }} -c 'import os;
+    print(os.getxattr("/nix/store/.mergerfs", "user.mergerfs.branches").decode())'
+  register: _union_branches
+  changed_when: false
+  when: _store_fstype.stdout == "fuse.mergerfs"
+
+- name: Remount the union on the Lower Store
+  when: >-
+    _union_branches is not skipped
+    and _union_branches.stdout != nix_rw_root ~ '/store=RW:' ~ nix_lower_store ~ '/store=RO'
+  become: true
+  block:
+    - name: Stop nix-daemon before the remount
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        state: stopped
+      loop:
+        - nix-daemon.socket
+        - nix-daemon.service
+
+    - name: Remount /nix/store on the Lower Store
+      ansible.builtin.systemd:
+        name: nix-store.mount
+        state: restarted
+        daemon_reload: true
+  rescue:
+    - name: Start nix-daemon again on the old union
+      ansible.builtin.systemd:
+        name: nix-daemon.socket
+        state: started
+
+    - name: The union could not be remounted
+      ansible.builtin.fail:
+        msg: >-
+          /nix/store is mounted on {{ _union_branches.stdout }}, not on {{ nix_lower_store }}/store,
+          and remounting it failed (most likely a process still uses /nix/store: fuser -vm
+          /nix/store). Stop those processes, or reboot, then re-run.
+
 - name: Ensure the drop-in directory exists
   become: true
   ansible.builtin.file:
@@ -111,7 +157,8 @@
   ansible.builtin.debug:
     msg: >-
       {{ nix_union_check_path }} is not published yet (promote fills stable); checked
-      {{ _any_profile.stdout }} instead.
+      {{ _any_profile.stdout }} instead. If it is this host's PATH target, the PATH check
+      (tasks/path_target.yml) fails the run.
   when: _any_profile is not skipped
 
 # A path that exists only in the Lower Store is valid only through the overlay.
