@@ -11,7 +11,12 @@
 # The installer links nix-daemon.service and .socket from the default profile,
 # that is from /nix/store. With the union, /nix/store is an empty mountpoint
 # when systemd loads units at boot, so neither loads and the daemon stays down
-# until someone starts it. The role's own copies are plain files.
+# until someone starts it. So the role writes the installed Nix's own units as
+# plain files, read from the default profile while /nix/store is readable, and
+# makes its changes in drop-ins. Every union run writes them again, so after
+# `nix upgrade-nix` (upgrade.yml) the same run moves them to the new Nix's.
+# Expects /nix/store readable: union.yml includes this before the first run's
+# migration empties it, or with the union mounted.
 
 - name: Install the nix-store.mount unit
   become: true
@@ -20,23 +25,40 @@
     dest: "{{ nix_systemd_unit_dir }}/nix-store.mount"
     mode: "0644"
 
-- name: Install the daemon's units as files, not links into /nix/store
-  become: true
-  ansible.builtin.template:
-    src: "{{ item }}.j2"
-    dest: "{{ nix_systemd_unit_dir }}/{{ item }}"
-    mode: "0644"
-    follow: false
+- name: Read the installed Nix's daemon units
+  ansible.builtin.slurp:
+    src: "{{ nix_installed_units_dir }}/{{ item }}"
   loop:
     - nix-daemon.service
     - nix-daemon.socket
+  register: _nix_installed_units
 
-- name: Ensure the drop-in directory exists
+# follow: false replaces the installer's link with the file.
+- name: Install the daemon's units as files, not links into /nix/store
+  become: true
+  ansible.builtin.copy:
+    content: "{{ _header ~ (item.content | b64decode) }}"
+    dest: "{{ nix_systemd_unit_dir }}/{{ item.item }}"
+    mode: "0644"
+    follow: false
+  loop: "{{ _nix_installed_units.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  vars:
+    _header: |
+      # Managed by cvmfs-service (role nix_union_store): the installed Nix's
+      # {{ item.item }}, as a file systemd can load before /nix/store is mounted (#35).
+  notify: Restart nix-daemon
+
+- name: Drop-in directories for the daemon's units
   become: true
   ansible.builtin.file:
-    path: "{{ nix_systemd_unit_dir }}/nix-daemon.service.d"
+    path: "{{ nix_systemd_unit_dir }}/{{ item }}.d"
     state: directory
     mode: "0755"
+  loop:
+    - nix-daemon.service
+    - nix-daemon.socket
 
 # The daemon alone opens the overlay store; nix.conf points clients at it
 # with store = daemon. % is doubled for systemd.
@@ -55,14 +77,31 @@
       ExecStart=@/nix/var/nix/profiles/default/bin/nix-daemon nix-daemon --daemon --option store {{ nix_overlay_store_url | replace('%', '%%') }}
   notify: Restart nix-daemon
 
-# Links from the earlier [Install] sections: nix-store.mount was in
-# multi-user.target, the installer's socket in sockets.target. union.yml's
+# The socket's RequiresMountsFor=/nix/store orders it after the union, which
+# waits for the network. With default dependencies it is also ordered before
+# sockets.target, so basic.target, and every service on the host, would wait
+# for the network with it. Its [Install] still puts it in sockets.target.wants:
+# pulled in at boot, but nothing waits for it.
+- name: Order the daemon's socket out of sockets.target
+  become: true
+  ansible.builtin.copy:
+    dest: "{{ nix_systemd_unit_dir }}/nix-daemon.socket.d/union-store.conf"
+    mode: "0644"
+    content: |
+      [Unit]
+      DefaultDependencies=no
+      After=sysinit.target
+      Before=shutdown.target
+      Conflicts=shutdown.target
+
+# Links from earlier [Install] sections, both in multi-user.target: the
+# union's before #35, the role's own socket's from #35's first form. union.yml's
 # enable tasks link them where their [Install] says now.
 - name: Remove the old install links
   become: true
   ansible.builtin.file:
-    path: "{{ nix_systemd_unit_dir }}/{{ item }}"
+    path: "{{ nix_systemd_unit_dir }}/multi-user.target.wants/{{ item }}"
     state: absent
   loop:
-    - multi-user.target.wants/nix-store.mount
-    - sockets.target.wants/nix-daemon.socket
+    - nix-store.mount
+    - nix-daemon.socket

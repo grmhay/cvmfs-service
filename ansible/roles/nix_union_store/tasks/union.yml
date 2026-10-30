@@ -3,11 +3,33 @@
 # plain /nix/store on the root filesystem; on first run its contents move to
 # the RW branch so nothing already installed is lost.
 
+# The daemon's units are read from the installed Nix, through /nix/store
+# (daemon_units_boot_order.yml). A boot that left the union unmounted (#35)
+# leaves /nix/store an empty mountpoint over the RW Branch: mount it first.
+- name: Look for an assembled union
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - "{{ nix_rw_root }}/store"
+    - "{{ nix_systemd_unit_dir }}/nix-store.mount"
+  register: _union_parts
+
+- name: Mount a union a boot left unmounted
+  become: true
+  ansible.builtin.systemd:
+    name: nix-store.mount
+    state: started
+  when: _union_parts.results | map(attribute='stat.exists') | min
+
 - name: Is /nix/store already a mergerfs mount?
   ansible.builtin.command: findmnt -n -o FSTYPE /nix/store
   register: _store_fstype
   changed_when: false
   failed_when: false
+
+# Before the migration: on a first run, /nix/store is readable only until then.
+- name: The union's mount unit and the daemon's units
+  ansible.builtin.include_tasks: daemon_units_boot_order.yml
 
 - name: Migrate the installer's /nix/store to the RW branch (first run only)
   become: true
@@ -21,9 +43,6 @@
     creates: "{{ nix_rw_root }}/store"
     executable: /bin/bash
   when: _store_fstype.stdout != "fuse.mergerfs"
-
-- name: The union's mount unit and the daemon's units
-  ansible.builtin.include_tasks: daemon_units_boot_order.yml
 
 # Once, for every unit above: the checks and starts below need systemd to have
 # loaded them. Handlers restart the daemon at the end, on the new units.

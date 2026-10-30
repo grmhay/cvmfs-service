@@ -29,6 +29,9 @@ set -euo pipefail
 
 root="${ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 role="$root/ansible/roles/nix_union_store"
+# The units of the Nix the host runs (here Nix 2.34.8's, which differ from
+# 2.30.0's): what the default profile's lib/systemd/system holds.
+installed="$root/tests/fixtures/nix-units"
 systemd="${SYSTEMD:-/usr/lib/systemd/systemd}"
 work="$(mktemp -d)"
 if [ -n "${KEEP:-}" ]; then echo "work dir: $work" >&2; else trap 'rm -rf "$work"' EXIT; fi
@@ -63,7 +66,8 @@ role_tasks() {
   ANSIBLE_LOCALHOST_WARNING=false ANSIBLE_INVENTORY_UNPARSED_WARNING=false \
     ansible-playbook -i localhost, -c local "$work/play.yml" \
     -e "@$role/defaults/main.yml" -e nix_system=x86_64-linux -e ansible_become=false \
-    -e "tasks_file=$role/tasks/$file" -e "nix_systemd_unit_dir=$dir" "$@" \
+    -e "tasks_file=$role/tasks/$file" -e "nix_systemd_unit_dir=$dir" \
+    -e "nix_installed_units_dir=$installed" "$@" \
     > "$work/ansible.log" 2>&1 \
     || { cat "$work/ansible.log"; exit 2; }
 }
@@ -151,6 +155,9 @@ starts() { unit "$1" "$2" | grep $'^\t\t-> Job ' > /dev/null; }
 # has <name> <unit> <"Dep: other">: the unit carries that dependency.
 has() { unit "$1" "$2" | grep -F $'\t\t'"$3 (" > /dev/null; }
 lacks() { ! has "$@"; }
+# from_installed <name> <unit>: the role's unit is the installed Nix's, as is
+# (the role's changes are drop-ins), under the role's header comment.
+from_installed() { diff <(grep -v '^#' "$work/$1/$2") "$installed/$2" > /dev/null; }
 
 # Every host in union Mode boots the same way; only the Lower Store differs.
 boots_cleanly() {
@@ -171,6 +178,10 @@ boots_cleanly() {
     has "$name" nix-daemon.service "After: nix-store.mount"
   check "$name: basic.target does not wait for the union (via sockets.target)" \
     lacks "$name" sockets.target "After: nix-daemon.socket"
+  check "$name: nix-daemon.service is the installed Nix's" \
+    from_installed "$name" nix-daemon.service
+  check "$name: nix-daemon.socket is the installed Nix's" \
+    from_installed "$name" nix-daemon.socket
 }
 
 # The Publisher: the Lower Store is its client view (ADR 0004), a cvmfs mount.
