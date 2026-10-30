@@ -13,7 +13,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # vm-service is a private input; the token reads its contents only (#37).
       - uses: DeterminateSystems/nix-installer-action@v16
+        with:
+          extra-conf: |
+            access-tokens = github.com=${{ secrets.VM_SERVICE_TOKEN }}
       - uses: DeterminateSystems/magic-nix-cache-action@v8
       - name: Build x86_64 profiles
         run: nix build -L '.#profile-base' '.#profile-docker-host' '.#profile-proxmox-node' '.#profile-cloud' '.#profile-builder'
