@@ -27,7 +27,7 @@
   changed_when: false
   failed_when: false
 
-# Before the migration: on a first run, /nix/store is readable only until then.
+# First: on a first run, /nix/store is readable only until the move below.
 - name: The union's mount unit and the daemon's units
   ansible.builtin.include_tasks: daemon_units_boot_order.yml
 

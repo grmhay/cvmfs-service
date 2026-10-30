@@ -15,8 +15,8 @@
 # plain files, read from the default profile while /nix/store is readable, and
 # makes its changes in drop-ins. Every union run writes them again, so after
 # `nix upgrade-nix` (upgrade.yml) the same run moves them to the new Nix's.
-# Expects /nix/store readable: union.yml includes this before the first run's
-# migration empties it, or with the union mounted.
+# Expects /nix/store readable: union.yml includes this before a first run
+# moves the installer's store to the RW Branch, or with the union mounted.
 
 - name: Install the nix-store.mount unit
   become: true

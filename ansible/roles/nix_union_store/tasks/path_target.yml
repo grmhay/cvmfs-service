@@ -5,7 +5,7 @@
 # not a user's shell later.
 #
 # union, thin: the PATH entry itself, <client view>/profiles/<channel>/<group>/
-#   <system>/bin, resolved through the merged store or the bind mount.
+#   <system>/bin, resolved through the Union Store or the bind mount.
 # cache: PATH is the local fleet profile, which fleet-profile.timer fills from
 #   the Repository's Profile link, so the link must be published. Its store
 #   path is not local until the timer has run, so it is not followed.

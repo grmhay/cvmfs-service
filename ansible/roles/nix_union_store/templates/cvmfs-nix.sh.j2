@@ -1,7 +1,7 @@
 # Managed by cvmfs-service. Group Profile for this host:
 #   channel={{ nix_channel }} group={{ nix_group }} system={{ nix_system }}
 # The symlink target is a /nix/store path; on a union host that resolves
-# through the merged store, on a thin host through the bind mount.
+# through the Union Store, on a thin host through the bind mount.
 {% if cvmfs_nix_mode == "cache" %}
 _fleet_bin=/nix/var/nix/profiles/fleet/bin
 {% else %}

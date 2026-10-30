@@ -102,7 +102,7 @@ host() {
   enable "$dir" nix-store.mount
   enable "$dir" nix-daemon.socket
 
-  # What systemd-fstab-generator writes for `<repo> <view> cvmfs defaults,_netdev`.
+  # What systemd-fstab-generator writes for `nix.hayweb.org <view> cvmfs defaults,_netdev`.
   if [ -n "$view" ]; then
     local unit
     unit="$(systemd-escape --path --suffix=mount "$view")"
@@ -225,7 +225,7 @@ leaves_no_union() {
 
 # Cache Mode (Soak criterion 6): the union is gone from the boot, and the daemon
 # boots from the installer's links into the default profile, which a plain
-# local /nix/store serves. Then what cache Mode's `enabled: true` links.
+# /nix/store serves. Then what cache Mode's `enabled: true` links.
 move "$work/canary" "$work/cache" cache
 enable "$work/cache" nix-daemon.socket
 boot cache
