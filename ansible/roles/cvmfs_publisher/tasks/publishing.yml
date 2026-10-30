@@ -17,9 +17,9 @@
     owner: "{{ publisher_user }}"
     mode: "0700"
 
-# The command module strips trailing whitespace from stdout, and this key is
-# the last value in the secrets file, so it arrives without the final newline
-# OpenSSH needs ("error in libcrypto"). Both copies put it back.
+# The key can arrive without the final newline OpenSSH needs ("error in
+# libcrypto"): the command module strips trailing whitespace from stdout when
+# it is the last value in the secrets file. Both copies put it back.
 - name: Builder key
   become: true
   ansible.builtin.copy:

@@ -16,6 +16,14 @@
     key_options: 'restrict,command="/nix/var/nix/profiles/default/bin/nix-store --serve --write"'
   when: nix_builder_authorized_key | length > 0
 
+- name: Revoke the Publisher's earlier keys
+  become: true
+  ansible.posix.authorized_key:
+    user: "{{ nix_builder_user }}"
+    key: "{{ item }}"
+    state: absent
+  loop: "{{ nix_builder_revoked_keys }}"
+
 # nix_union_store owns nix.conf and includes this drop-in; editing nix.conf
 # itself would undo that role's template on every run, and the restart with it.
 - name: Nix drop-in directory
