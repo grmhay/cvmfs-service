@@ -152,6 +152,7 @@ no_cycle() {
 # Not grep -q: under pipefail, awk killed by SIGPIPE would fail the match.
 # starts <name> <unit>: the boot transaction has a job for it.
 starts() { unit "$1" "$2" | grep $'^\t\t-> Job ' > /dev/null; }
+no_job() { ! starts "$@"; }
 # has <name> <unit> <"Dep: other">: the unit carries that dependency.
 has() { unit "$1" "$2" | grep -F $'\t\t'"$3 (" > /dev/null; }
 lacks() { ! has "$@"; }
@@ -182,6 +183,9 @@ boots_cleanly() {
     from_installed "$name" nix-daemon.service
   check "$name: nix-daemon.socket is the installed Nix's" \
     from_installed "$name" nix-daemon.socket
+  check "$name: the daemon's units are files, not links" \
+    test -f "$work/$name/nix-daemon.service" -a ! -L "$work/$name/nix-daemon.service" \
+    -a -f "$work/$name/nix-daemon.socket" -a ! -L "$work/$name/nix-daemon.socket"
 }
 
 # The Publisher: the Lower Store is its client view (ADR 0004), a cvmfs mount.
@@ -195,5 +199,59 @@ host canary "" -e nix_lower_store=/srv/lower/nix
 boots_cleanly canary
 check "canary: the union is the RW Branch over the stand-in Lower Store" \
   grep -qx 'What=/nix/.rw-store/store=RW:/srv/lower/nix/store=RO' "$work/canary/nix-store.mount"
+
+# move <from dir> <to dir> <mode>: that union host's units, put in another Mode
+# by the role's own tasks (tasks/leave_union_units.yml), the way #23's fallback
+# moves a host: Mode set to cache (or thin) in NetBox, then a re-run.
+move() {
+  mkdir -p "$2"
+  cp -a "$1/." "$2/"
+  rm -f "$2/dump" "$2/log"
+  role_tasks leave_union_units.yml "$2" -e "cvmfs_nix_mode=$3"
+}
+# masks <root>: what thin.yml's `masked: true` runs, on that root's units.
+masks() {
+  systemctl --root="$1" mask nix-daemon.socket nix-daemon.service > "$work/mask.log" 2>&1 \
+    || { sed 's/^/       /' "$work/mask.log"; false; }
+}
+# leaves_no_union <dir>: none of the union's units or drop-ins is left.
+leaves_no_union() {
+  local f
+  for f in nix-store.mount remote-fs.target.wants/nix-store.mount \
+    nix-daemon.service.d/union-store.conf nix-daemon.socket.d/union-store.conf; do
+    if [ -e "$1/$f" ] || [ -L "$1/$f" ]; then echo "       left: $f"; return 1; fi
+  done
+}
+
+# Cache Mode (Soak criterion 6): the union is gone from the boot, and the daemon
+# boots from the installer's links into the default profile, which a plain
+# local /nix/store serves. Then what cache Mode's `enabled: true` links.
+move "$work/canary" "$work/cache" cache
+enable "$work/cache" nix-daemon.socket
+boot cache
+check "cache: no unit or drop-in of the union is left" leaves_no_union "$work/cache"
+check "cache: the boot transaction has no ordering cycle" no_cycle cache
+check "cache: the boot does not mount a union" no_job cache nix-store.mount
+check "cache: the boot starts nix-daemon.socket" starts cache nix-daemon.socket
+check "cache: nix-daemon.service does not wait for a union" \
+  lacks cache nix-daemon.service "After: nix-store.mount"
+check "cache: nix-daemon.service is the installed Nix's link" \
+  test "$(readlink "$work/cache/nix-daemon.service")" = "$installed/nix-daemon.service"
+check "cache: nix-daemon.socket is the installed Nix's link" \
+  test "$(readlink "$work/cache/nix-daemon.socket")" = "$installed/nix-daemon.socket"
+
+# And back to union Mode ("back"): the same units as any union host.
+mkdir -p "$work/back"
+cp -a "$work/cache/." "$work/back/"
+role_tasks daemon_units_boot_order.yml "$work/back" -e nix_lower_store=/srv/lower/nix
+enable "$work/back" nix-store.mount
+enable "$work/back" nix-daemon.socket
+boots_cleanly back
+
+# Thin Mode: no daemon, so thin.yml masks its units. systemctl refuses to mask
+# over a unit file or a link to one; nothing is left for it to refuse.
+move "$work/canary" "$work/thin/etc/systemd/system" thin
+check "thin: no unit or drop-in of the union is left" leaves_no_union "$work/thin/etc/systemd/system"
+check "thin: the daemon's units can be masked" masks "$work/thin"
 
 [ "$fails" -eq 0 ]

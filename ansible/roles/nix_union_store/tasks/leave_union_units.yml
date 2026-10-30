@@ -1,0 +1,61 @@
+---
+# Leaving union Mode for cache or thin: remove the unit files union Mode
+# installed (daemon_units_boot_order.yml). Unit files only: leave_union.yml
+# takes the union down first and reloads systemd after.
+# tests/union-mount-order.sh runs this file into a scratch unit directory.
+# A host that never ran in union Mode has none of them: nothing changes.
+
+- name: Remove the union's mount unit and the daemon's union drop-ins
+  become: true
+  ansible.builtin.file:
+    path: "{{ nix_systemd_unit_dir }}/{{ item }}"
+    state: absent
+  loop:
+    - remote-fs.target.wants/nix-store.mount
+    - multi-user.target.wants/nix-store.mount
+    - nix-store.mount
+    - nix-daemon.service.d/union-store.conf
+    - nix-daemon.socket.d/union-store.conf
+    - multi-user.target.wants/nix-daemon.socket
+
+# cache: a plain local /nix/store serves the default profile at boot, so the
+# installer's links work again; they replace the role's copies.
+- name: Link the daemon's units from the default profile again (cache Mode)
+  become: true
+  ansible.builtin.file:
+    src: "{{ nix_installed_units_dir }}/{{ item }}"
+    dest: "{{ nix_systemd_unit_dir }}/{{ item }}"
+    state: link
+    force: true
+  loop:
+    - nix-daemon.service
+    - nix-daemon.socket
+  when: cvmfs_nix_mode == "cache"
+
+# thin: no daemon, and thin.yml masks its units. systemctl refuses to mask
+# over a unit file or a link to one (the role's copies, the installer's links),
+# so everything but a mask goes.
+- name: Look at the daemon's units (thin Mode)
+  ansible.builtin.stat:
+    path: "{{ nix_systemd_unit_dir }}/{{ item }}"
+    follow: false
+    get_checksum: false
+  loop:
+    - nix-daemon.service
+    - nix-daemon.socket
+    - sockets.target.wants/nix-daemon.socket
+  register: _daemon_unit_files
+  when: cvmfs_nix_mode == "thin"
+
+- name: Remove the daemon's units, so thin Mode can mask them
+  become: true
+  ansible.builtin.file:
+    path: "{{ item.stat.path }}"
+    state: absent
+  loop: "{{ _daemon_unit_files.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when:
+    - cvmfs_nix_mode == "thin"
+    - item.stat.exists
+    - not (item.stat.islnk and item.stat.lnk_target == "/dev/null")

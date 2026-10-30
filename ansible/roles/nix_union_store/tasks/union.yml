@@ -132,6 +132,21 @@
     enabled: true
     state: started
 
+# A host back from cache Mode: PATH is the Repository's Profile again, so the
+# puller that filled the local fleet profile stops.
+- name: Look for cache Mode's profile puller
+  ansible.builtin.stat:
+    path: "{{ nix_systemd_unit_dir }}/fleet-profile.timer"
+  register: _fleet_timer
+
+- name: Stop cache Mode's profile puller
+  become: true
+  ansible.builtin.systemd:
+    name: fleet-profile.timer
+    enabled: false
+    state: stopped
+  when: _fleet_timer.stat.exists
+
 - name: Flush handlers so the daemon restarts on the union
   ansible.builtin.meta: flush_handlers
 
