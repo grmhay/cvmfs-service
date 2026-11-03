@@ -67,6 +67,9 @@ nix_opts=(--option auto-optimise-store false --no-check-sigs)
 # every transaction so the Repository always carries the committed version;
 # CVMFS applies it at publish (spike S3).
 install -m 0644 "$dirtab" "$root/.cvmfsdirtab"
+# An earlier dirtab left a catalog marker in .links; drop it. That merges an
+# empty catalog into its parent: no content goes.
+rm -f "$root/nix/store/.links/.cvmfscatalog"
 
 paths=("${outs[@]}")
 log "copying ${#paths[@]} profile closures into the lower store"
