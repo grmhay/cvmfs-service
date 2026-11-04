@@ -1,10 +1,7 @@
 # Nested catalogs for nix.hayweb.org (installed at /cvmfs/<repo>/.cvmfsdirtab).
-# One catalog per store path: a client loads only the catalogs for the paths
-# it touches, so the root catalog stays small as the store grows.
-/nix/store/*
+# One catalog for the Lower Store, rooted at /nix: its marker sits beside
+# store/ and var/, outside every store path and the store directory. Why not
+# /nix/store/* or /nix/store: ADR 0006 (#44).
+/nix
 /cache/*
 /profiles/*/*
-# .links is Nix's hardlink directory, not a store path. A marker there is a
-# single-link file in the read-only branch, and every host's GC failed trying
-# to remove it.
-! /nix/store/.links

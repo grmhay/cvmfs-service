@@ -71,7 +71,7 @@
         packages = profiles // { default = profiles.profile-base; };
 
         apps = {
-          publish = mkApp "publish" [ pkgs.nix pkgs.git pkgs.jq pkgs.coreutils pkgs.sqlite ];
+          publish = mkApp "publish" [ pkgs.nix pkgs.git pkgs.jq pkgs.coreutils pkgs.findutils pkgs.sqlite ];
           promote = mkApp "promote" [ pkgs.nix pkgs.git pkgs.jq pkgs.coreutils ];
           verify-origin = mkApp "verify-origin" [ pkgs.curl pkgs.openssl pkgs.jq pkgs.coreutils pkgs.gnused pkgs.gnugrep ];
           ## Runs on the workstation, not the Publisher: moves the master key
@@ -118,6 +118,28 @@
               chmod +x reconcile-publish.sh reconcile-publish-test.sh
               patchShebangs .
               HOME="$TMPDIR" ./reconcile-publish-test.sh ./reconcile-publish.sh
+              touch $out
+            '';
+          ## The catalog layout (#44): Nix's verify and GC leave a marker at the
+          ## Lower Store's /nix alone, remove one in /nix/store, and catch one in a path.
+          store-catalog-marker = pkgs.runCommand "store-catalog-marker-test"
+            { nativeBuildInputs = [ pkgs.bash pkgs.coreutils pkgs.nix ]; }
+            ''
+              cp ${./tests/store-catalog-marker-test.sh} store-catalog-marker-test.sh
+              chmod +x store-catalog-marker-test.sh
+              patchShebangs .
+              HOME="$TMPDIR" ./store-catalog-marker-test.sh
+              touch $out
+            '';
+          ## publish.sh's cleanup of the old per-path markers (#44), on a fixture store.
+          drop-path-catalogs = pkgs.runCommand "drop-path-catalogs-test"
+            { nativeBuildInputs = [ pkgs.bash pkgs.coreutils pkgs.findutils ]; }
+            ''
+              cp ${./publish/drop-path-catalogs.sh} drop-path-catalogs.sh
+              cp ${./tests/drop-path-catalogs-test.sh} drop-path-catalogs-test.sh
+              chmod +x drop-path-catalogs.sh drop-path-catalogs-test.sh
+              patchShebangs .
+              HOME="$TMPDIR" ./drop-path-catalogs-test.sh ./drop-path-catalogs.sh
               touch $out
             '';
         };
