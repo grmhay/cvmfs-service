@@ -4,3 +4,7 @@
 /nix/store/*
 /cache/*
 /profiles/*/*
+# .links is Nix's hardlink directory, not a store path. A marker there is a
+# single-link file in the read-only branch, and every host's GC failed trying
+# to remove it.
+! /nix/store/.links
