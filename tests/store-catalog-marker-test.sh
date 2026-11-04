@@ -8,11 +8,12 @@
 #   - inside a store path (the old one-catalog-per-path layout): it changes the
 #     path's contents, and verify fails;
 #   - in /nix/store itself: GC deletes every entry there that is not a valid
-#     path, which on a union host is the read-only branch (as .links was, #42).
+#     path, and in a Union Store that entry is in the Lower Store (as .links
+#     was, #42).
 #
 # Runs against a throwaway local store, so it needs nix on PATH and no daemon.
-# It covers Nix only: the mergerfs union and the overlay store are checked on
-# the hosts (#44's "Done when").
+# It covers Nix only: the Union Store (mergerfs and the overlay store) is
+# checked on the hosts (#44's "Done when").
 # Run from anywhere: tests/store-catalog-marker-test.sh
 # (`nix flake check` runs it as checks.<system>.store-catalog-marker).
 set -euo pipefail

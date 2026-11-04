@@ -21,21 +21,26 @@ The live root catalog on 2026-11-03 showed:
 ## Decision
 
 - The dirtab has `/nix` in place of `/nix/store/*`, so the whole Lower Store (`store/` and
-  `var/nix/db`) is one nested catalog. Its marker is `/nix/.cvmfscatalog`, beside `store/`, where Nix
-  never looks. `/cache/*` and `/profiles/*/*` stay as they are.
-- Not `/nix/store`: Nix's GC deletes every entry in the store directory that is not a valid path. On
-  a union host that entry would be on the read-only branch, and GC would fail the way #42 did.
+  `var/nix/db`) is one nested catalog. Its marker is `/nix/.cvmfscatalog`, beside `store/`. It is
+  outside the Union Store, whose RO branch is `<repo>/nix/store`, and the daemon's read-only lower
+  store (`root=<repo>`) neither verifies nor collects it. `/cache/*` and `/profiles/*/*` stay as they are.
+- Not `/nix/store`: Nix's GC deletes every entry in the store directory that is not a valid path. On a
+  host in union Mode that entry would be in the Lower Store, and GC would fail the way #42 did.
   `tests/store-catalog-marker-test.sh` (a flake check) pins both behaviours.
 - `publish/drop-path-catalogs.sh` removes the old per-path markers in every transaction. That merges
-  their catalogs into the new one. Only the markers go, never content. It's idempotent.
+  their catalogs into the new one. It's idempotent. It removes only empty markers directly inside a
+  store path, never a path's own file of that name, so this is catalog metadata and no exception to
+  the retention rule (nothing is deleted from the Repository).
 - Nothing has to make store-path directories writable for CVMFS any more. The `chmod u+w` that
   publish.sh ran on new paths for their markers is gone. Paths published earlier stay `u+w`.
 
 ## Consequences
 
-- Published paths verify, and a union host can be the source of a copy.
+- Published paths verify, and a host in union Mode can be the source of a copy.
+- The first publish under this layout creates the `/nix` catalog and merges about 480 nested catalogs
+  into it in one transaction. Run `cvmfs_server check` after it.
 - **Clients fetch more per revision.** The Lower Store catalog is about 65k entries today, an
-  estimated 8–10 MB compressed, and every union host fetches it again on each new revision (from the
+  estimated 8–10 MB compressed, and every host in union Mode fetches it again on each new revision (from the
   Cache, so the Origin serves it once). The old layout fetched only the root catalog and the catalogs
   of the paths a host touched.
 - **The catalog only grows.** Retention is never (year one), so it gains every published path. CVMFS

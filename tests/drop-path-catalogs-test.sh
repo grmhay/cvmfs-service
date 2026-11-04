@@ -25,6 +25,9 @@ for d in "$store/aaaa-hello" "$store/bbbb-lib" "$store/.links"; do : > "$d/.cvmf
 echo hello > "$store/aaaa-hello/bin/hello"
 # A file of that name deeper inside a path is the path's own content.
 : > "$store/bbbb-lib/share/doc/.cvmfscatalog"
+# So is one at a path's top with content (a package that ships the file).
+mkdir -p "$store/cccc-cvmfs-tools"
+echo shipped > "$store/cccc-cvmfs-tools/.cvmfscatalog"
 : > "$nix/.cvmfscatalog"
 : > "$nix/var/nix/db/db.sqlite"
 
@@ -35,11 +38,13 @@ check "drops the marker in each store path" \
 check "drops the marker in .links" test ! -e "$store/.links/.cvmfscatalog"
 check "keeps the store paths' contents" test -s "$store/aaaa-hello/bin/hello"
 check "keeps a file of that name deeper inside a path" test -e "$store/bbbb-lib/share/doc/.cvmfscatalog"
+check "keeps a path's own file of that name with content" test -s "$store/cccc-cvmfs-tools/.cvmfscatalog"
 check "keeps the Lower Store's own marker at /nix" test -e "$nix/.cvmfscatalog"
 check "keeps the database" test -e "$nix/var/nix/db/db.sqlite"
 
 "$script" "$store"
-check "a second run changes nothing and succeeds" test -s "$store/aaaa-hello/bin/hello"
+check "a second run succeeds and keeps what the first kept" \
+  test -s "$store/aaaa-hello/bin/hello" -a -e "$store/bbbb-lib/share/doc/.cvmfscatalog" -a -e "$nix/.cvmfscatalog"
 
 check "refuses a directory that is not a store" exits_nonzero "$script" "$work/missing"
 

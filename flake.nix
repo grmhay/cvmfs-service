@@ -139,7 +139,7 @@
               cp ${./tests/drop-path-catalogs-test.sh} drop-path-catalogs-test.sh
               chmod +x drop-path-catalogs.sh drop-path-catalogs-test.sh
               patchShebangs .
-              ./drop-path-catalogs-test.sh ./drop-path-catalogs.sh
+              HOME="$TMPDIR" ./drop-path-catalogs-test.sh ./drop-path-catalogs.sh
               touch $out
             '';
         };

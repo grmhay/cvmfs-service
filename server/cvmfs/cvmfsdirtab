@@ -1,8 +1,7 @@
 # Nested catalogs for nix.hayweb.org (installed at /cvmfs/<repo>/.cvmfsdirtab).
-# One catalog for the Lower Store, rooted at /nix, so its marker sits beside
-# store/ and var/ (ADR 0006, #44). Not /nix/store/*: a marker inside a store
-# path changes the path's contents. Not /nix/store: GC deletes every entry there
-# that is not a valid path, and on a union host that is the read-only branch.
+# One catalog for the Lower Store, rooted at /nix: its marker sits beside
+# store/ and var/, outside every store path and the store directory. Why not
+# /nix/store/* or /nix/store: ADR 0006 (#44).
 /nix
 /cache/*
 /profiles/*/*
