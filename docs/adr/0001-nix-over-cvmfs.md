@@ -37,8 +37,9 @@ the repository in its first year.
   only placed on the Publisher to `resign`.
 - The MinIO bucket is anonymous-read on LAN + VPN: CVMFS verifies every object against the repository
   signature, so transport confidentiality is not relied on.
-- CVMFS's nested catalogs (`/nix/store/*`) mean a client downloads metadata only for the paths it
-  touches; the root catalog stays small as the store grows.
+- CVMFS's nested catalogs keep the Lower Store's metadata out of the root catalog. Originally one per
+  store path (`/nix/store/*`); since ADR 0006, one for the whole Lower Store at `/nix`, because a
+  marker inside a store path changes its contents.
 - Hardlink optimisation is off everywhere (`auto-optimise-store = false`): CVMFS dedups by content
   and cross-directory hardlinks do not survive publishing.
 - The host model depends on mergerfs behaving under a changing read-only branch (ADR 0002); spike S2

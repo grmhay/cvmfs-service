@@ -63,25 +63,16 @@ trap 'log "FAILED; aborting transaction"; cvmfs_server abort -f "$repo"' ERR
 # cross-directory hardlinks do not survive publishing.
 nix_opts=(--option auto-optimise-store false --no-check-sigs)
 
-# Nested catalogs, one per store path (server/cvmfs/cvmfsdirtab). Installed in
-# every transaction so the Repository always carries the committed version;
-# CVMFS applies it at publish (spike S3).
+# Nested catalogs (server/cvmfs/cvmfsdirtab): one for the Lower Store, at /nix
+# (#44). Installed in every transaction so the Repository always carries the
+# committed version; CVMFS applies it at publish (spike S3).
 install -m 0644 "$dirtab" "$root/.cvmfsdirtab"
-# An earlier dirtab left a catalog marker in .links; drop it. That merges an
-# empty catalog into its parent: no content goes.
-rm -f "$root/nix/store/.links/.cvmfscatalog"
+# The markers the old one-per-store-path dirtab left go; idempotent.
+"$(dirname "${BASH_SOURCE[0]}")/drop-path-catalogs.sh" "$root/nix/store"
 
 paths=("${outs[@]}")
 log "copying ${#paths[@]} profile closures into the lower store"
 nix copy "${nix_opts[@]}" --to "local?root=$root" "${paths[@]}"
-
-# Nix leaves each store path r-x. cvmfs_server publish runs as the repository
-# owner, not root (the S3 spike ran as root), so it could not write the
-# .cvmfscatalog marker the dirtab asks for in each one: errno 13, "Failed to
-# apply .cvmfsdirtab". A store path's hash covers contents and the executable
-# bit, not directory modes. Only paths not yet writable, so published ones are
-# not copied up again.
-find "$root/nix/store" -mindepth 1 -maxdepth 1 -type d ! -perm -u+w -exec chmod u+w {} +
 
 # Clients open the Lower Store read-only, which SQLite does as immutable and
 # so ignores a -wal file: fold the WAL into db.sqlite and leave the DB out of

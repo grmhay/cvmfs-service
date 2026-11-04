@@ -102,7 +102,7 @@ do_check() {
   local minio="https://$s3_host" code
   step "repository"
   check "cvmfs_server check $repo" cvmfs_server check "$repo"
-  check "nested catalogs from the dirtab" bash -c "cvmfs_server list-catalogs $repo | grep -q '/nix/store/'"
+  check "nested catalogs from the dirtab" bash -c "cvmfs_server list-catalogs $repo | grep -qE '/nix$'"
   step "bucket, anonymously (no credentials)"
   check ".cvmfspublished fetchable" curl -fsS "$minio/$bucket/$repo/.cvmfspublished" -o /dev/null
   check ".cvmfswhitelist fetchable" curl -fsS "$minio/$bucket/$repo/.cvmfswhitelist" -o /dev/null
