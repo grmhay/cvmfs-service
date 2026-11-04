@@ -1,6 +1,6 @@
 # Handover
 
-State of the work as of **2026-11-03**. Design: `plans/0001-nix-over-cvmfs.md`; vocabulary: `CONTEXT.md`.
+State of the work as of **2026-11-04**. Design: `plans/0001-nix-over-cvmfs.md`; vocabulary: `CONTEXT.md`.
 The work left is the spec #23 (phases 2–5, from the canaries to the whole fleet) and its tickets #24–#34.
 
 Phases 0 and 1 are done. The Repository `nix.hayweb.org` is live: the Publisher's reconciler publishes every
@@ -9,12 +9,12 @@ Group's Profile to `canary` for both systems, the Cache serves it, and the white
 sandbox on, and **the Soak (#29) has started**: earliest sign-off 2026-11-06.
 
 The repo side of #23 is merged (#36, then the fixes #39 and #41) and released as collection `v0.6.2`
-(7eeadbe), which ansible-lab-config pins (its 26e01701). #28, #35, #37, #41 and #42 are closed; #26 waits on
-Publishes. The fleet came back cleanly from the reboots of 2026-11-01. The weekly GC, which had never finished
-anywhere, was fixed on 2026-11-03 (#42). That check turned up #44: every published store path carries a CVMFS
-catalog marker. See "Since 2026-10-30" below.
+(7eeadbe), which ansible-lab-config pins (its 26e01701). #28, #35, #37, #41, #42 and #44 are closed; #26 waits
+on Publishes. The fleet came back cleanly from the reboots of 2026-11-01. The weekly GC, which had never
+finished anywhere, was fixed on 2026-11-03 (#42). Since revision 8 (2026-11-04) the Lower Store is one nested
+catalog at `/nix` (#44, ADR 0006), and published paths pass `nix store verify`. See "Since 2026-10-30" below.
 
-## Since 2026-10-30 (to 2026-11-03)
+## Since 2026-10-30 (to 2026-11-04)
 
 From Semaphore task logs and ad-hoc Ansible runs by the operator on the hosts. Ad-hoc commands run as
 `ansible` on pi5 from `/etc/ansible-lab-config`, with `-i nb_inventory.yml --vault-password-file=vault/vault_pass.txt`;
@@ -29,9 +29,9 @@ PATH: use `/nix/var/nix/profiles/default/bin/nix`. Where this section and the tw
 | Reboots of 2026-11-01 | The Publisher, pi6, pi7, nixcanary-deb1 and nixcanary-rhel1 booted at about 01:00. On each: `/nix/store` on `fuse.mergerfs`, `nix-daemon.socket` active, no ordering cycle in `journalctl -b` (#35 holds unattended). pi5 (up since 10-25) and cache1 (since 10-30 12:52) did not reboot; whether they should have is **unverified**. `systemctl is-system-running` was `degraded` only because of `nix-gc.service` |
 | Weekly GC (#42) | Failed on all six union hosts on 11-01: `error: deleting '/nix/store/.links/.cvmfscatalog': Read-only file system`. The dirtab's `/nix/store/*` had put a catalog marker in the Lower Store's `.links`. #43 (0756dde) excludes `.links` and removes the marker in the transaction; a publish run by hand on 11-03 applied it. GC then finished on the Publisher (RW Branch 309M → 146M) and the three canaries (unchanged). The docker-host Profile stayed `VALID` with all 142 paths. pi5 and pi6 not run by hand: check their GC on Sun 11-08 |
 | GC counts | Every GC reports hundreds to thousands of paths "deleted" and an absurd "MiB freed" (up to ~35 PiB). The overlay store's GC drops published paths from the local database and counts their sizes; their files stay. Harmless so far. Read a GC log again after local builds on a canary (#29's GC criterion) |
-| Store path markers (#44, needs-triage) | The same dirtab puts a `.cvmfscatalog` in **every** published store path, so `nix store verify --no-trust` fails on all of them ("was modified!"), since the first publish. Software runs; a `nix copy` *from* a union host to a store that lacks a path would fail its hash. The catalog layout needs a decision and an ADR (options in the issue) |
+| Catalog layout (#44, closed) | The old dirtab's `/nix/store/*` had put a `.cvmfscatalog` in **every** published store path, so `nix store verify --no-trust` failed on all of them. #46 (4cfb80d) roots one catalog at `/nix` (ADR 0006; not `/nix/store`, whose non-path entries GC deletes) and `publish/drop-path-catalogs.sh` removed the old markers. The reconciler published it as **revision 8** at 05:03:34 on 11-04: `cvmfs_server check` no problems, 11 catalogs and none under `/nix/store`. On the Publisher, pi7 and nixcanary-deb1 the docker-host closure (142 paths) verifies, copies to an empty store, and survives a GC. Every new revision now refetches the whole `/nix` catalog (about 65k entries, an estimated 8–10 MB); nothing monitors its size yet |
 | Publishes | #43 touches no publish input (`flake.nix`, `flake.lock`, `profiles/`), so the reconciler records it without publishing. The 11-03 publish was run by hand as `publisher`: `git reset --hard origin/master`, then `nix run .#publish` (its revision number is not recorded here). To run one by hand, hold the reconciler's lock, `flock ~/.local/state/cvmfs-publish/publish.lock nix run .#publish` (`publisher_lock_file`), **not** `/tmp/cvmfs-publish.lock`: on 11-04 a run under that wrong lock collided with the reconciler's publish of #46 (revision 8, the `/nix` catalog of ADR 0006); its `cvmfs_server transaction` failed and nothing was harmed. The agent can also SSH to the fleet itself as `ansible@<host>.hayweb.org` (NOPASSWD sudo; `sudo -u publisher` for the repository owner) |
-| Resign | `cvmfs-resign.timer` was due Mon 2026-11-02 03:00; its result is **unverified** |
+| Resign | Mon 2026-11-02 03:00:01: `whitelist re-signed`, the service and its cleanup both exit 0, and no master key is left on disk. The Cache serves a `.cvmfswhitelist` signed 2026-11-02 10:00 UTC, expiring 2026-12-02 10:00 UTC. Next run Mon 2026-11-09 03:00 |
 
 ## Since the morning (2026-10-30, afternoon)
 
@@ -80,13 +80,12 @@ Publisher Union Store and Canary rows are superseded by "Since the morning" abov
 
 Finished and closed: S1–S3 (#1–#3, `docs/spikes/`), the four long-lived VMs (#5), the Publisher's first-run
 fixes (#15–#17), secrets under Semaphore (#18), the chroot-fix fork on the canaries (#14,
-`docs/canary-nix-fork.md`), the unattended resign (#19), and from #23: #21, #24, #28, #35, #37, #41, #42. Open by choice: #4 waits for `verify-origin` from
+`docs/canary-nix-fork.md`), the unattended resign (#19), and from #23: #21, #24, #28, #35, #37, #41, #42, #44. Open by choice: #4 waits for `verify-origin` from
 a cloud host (now #27). #6, #9 and #13 wait on a Nix release with the chroot-parent fix.
 
 ## Next: spec #23
 
 The order and the gates are in the plan (`plans/0001-nix-over-cvmfs.md`, "Amendments 2026-10-30"). In short:
-First, decide #44's catalog layout: it changes the Repository, so do it before more hosts read it.
 #28 is done and the Soak (#29) is running: its manual criteria (a revision flip under load, the cache at or
 under quota, a local build and GC that leave the Lower Store alone, one canary to cache Mode and back) are
 the work of the week. #26 closes once Publishes go through, and those Publishes count toward the Soak's
