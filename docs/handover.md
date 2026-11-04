@@ -1,6 +1,6 @@
 # Handover
 
-State of the work as of **2026-10-30**. Design: `plans/0001-nix-over-cvmfs.md`; vocabulary: `CONTEXT.md`.
+State of the work as of **2026-11-03**. Design: `plans/0001-nix-over-cvmfs.md`; vocabulary: `CONTEXT.md`.
 The work left is the spec #23 (phases 2–5, from the canaries to the whole fleet) and its tickets #24–#34.
 
 Phases 0 and 1 are done. The Repository `nix.hayweb.org` is live: the Publisher's reconciler publishes every
@@ -8,9 +8,30 @@ Group's Profile to `canary` for both systems, the Cache serves it, and the white
 (#19). **Since the evening of 2026-10-30 the three Canary hosts read it too**, on `canary`, with the build
 sandbox on, and **the Soak (#29) has started**: earliest sign-off 2026-11-06.
 
-The repo side of #23 is merged (#36, then the fix #39) and released as collection `v0.6.1` (2a7cfd8), which
-ansible-lab-config pins (its 171ad20f). #28 and #35 are closed; #26 and #37 wait on Publishes (see
-"Since the morning" below).
+The repo side of #23 is merged (#36, then the fixes #39 and #41) and released as collection `v0.6.2`
+(7eeadbe), which ansible-lab-config pins (its 26e01701). #28, #35, #37, #41 and #42 are closed; #26 waits on
+Publishes. The fleet came back cleanly from the reboots of 2026-11-01. The weekly GC, which had never finished
+anywhere, was fixed on 2026-11-03 (#42). That check turned up #44: every published store path carries a CVMFS
+catalog marker. See "Since 2026-10-30" below.
+
+## Since 2026-10-30 (to 2026-11-03)
+
+From Semaphore task logs and ad-hoc Ansible runs by the operator on the hosts. Ad-hoc commands run as
+`ansible` on pi5 from `/etc/ansible-lab-config`, with `-i nb_inventory.yml --vault-password-file=vault/vault_pass.txt`;
+the Publisher login is `pi` (sudo asks for a password). Under `sudo` and Ansible's shell, `nix` is not on
+PATH: use `/nix/var/nix/profiles/default/bin/nix`. Where this section and the two below differ, this one is newer; #37's
+`vm_service` check passed on revision 6 (both systems).
+
+| Item | State on 2026-11-03 |
+|---|---|
+| Collection | `v0.6.2` (#41) pinned in ansible-lab-config (26e01701) |
+| nixbuild key | Rotated (#41; the old private key had been exposed in an agent session). New key `SHA256:VM9tUJC5pdsqyAApLQ0yRgI/Gt1L7Ufk/WTqmS304kY` in `publisher.enc.yaml`; `cvmfs: publisher` task 245, then `cvmfs: builders` task 246 (authorised the new key, revoked the old one on pi5 and pi6). A remote build over the new key from the Publisher is **unverified**: `sudo /nix/var/nix/profiles/default/bin/nix store info --store ssh://nixbuild@pi5.hayweb.org` (and pi6) |
+| Reboots of 2026-11-01 | The Publisher, pi6, pi7, nixcanary-deb1 and nixcanary-rhel1 booted at about 01:00. On each: `/nix/store` on `fuse.mergerfs`, `nix-daemon.socket` active, no ordering cycle in `journalctl -b` (#35 holds unattended). pi5 (up since 10-25) and cache1 (since 10-30 12:52) did not reboot; whether they should have is **unverified**. `systemctl is-system-running` was `degraded` only because of `nix-gc.service` |
+| Weekly GC (#42) | Failed on all six union hosts on 11-01: `error: deleting '/nix/store/.links/.cvmfscatalog': Read-only file system`. The dirtab's `/nix/store/*` had put a catalog marker in the Lower Store's `.links`. #43 (0756dde) excludes `.links` and removes the marker in the transaction; a publish run by hand on 11-03 applied it. GC then finished on the Publisher (RW Branch 309M → 146M) and the three canaries (unchanged). The docker-host Profile stayed `VALID` with all 142 paths. pi5 and pi6 not run by hand: check their GC on Sun 11-08 |
+| GC counts | Every GC reports hundreds to thousands of paths "deleted" and an absurd "MiB freed" (up to ~35 PiB). The overlay store's GC drops published paths from the local database and counts their sizes; their files stay. Harmless so far. Read a GC log again after local builds on a canary (#29's GC criterion) |
+| Store path markers (#44, needs-triage) | The same dirtab puts a `.cvmfscatalog` in **every** published store path, so `nix store verify --no-trust` fails on all of them ("was modified!"), since the first publish. Software runs; a `nix copy` *from* a union host to a store that lacks a path would fail its hash. The catalog layout needs a decision and an ADR (options in the issue) |
+| Publishes | #43 touches no publish input (`flake.nix`, `flake.lock`, `profiles/`), so the reconciler records it without publishing. The 11-03 publish was run by hand as `publisher`: `git reset --hard origin/master`, then `flock /tmp/cvmfs-publish.lock nix run .#publish`. Its revision number is not recorded here |
+| Resign | `cvmfs-resign.timer` was due Mon 2026-11-02 03:00; its result is **unverified** |
 
 ## Since the morning (2026-10-30, afternoon)
 
@@ -59,16 +80,17 @@ Publisher Union Store and Canary rows are superseded by "Since the morning" abov
 
 Finished and closed: S1–S3 (#1–#3, `docs/spikes/`), the four long-lived VMs (#5), the Publisher's first-run
 fixes (#15–#17), secrets under Semaphore (#18), the chroot-fix fork on the canaries (#14,
-`docs/canary-nix-fork.md`), the unattended resign (#19), and from #23: #21, #24, #28, #35. Open by choice: #4 waits for `verify-origin` from
+`docs/canary-nix-fork.md`), the unattended resign (#19), and from #23: #21, #24, #28, #35, #37, #41, #42. Open by choice: #4 waits for `verify-origin` from
 a cloud host (now #27). #6, #9 and #13 wait on a Nix release with the chroot-parent fix.
 
 ## Next: spec #23
 
 The order and the gates are in the plan (`plans/0001-nix-over-cvmfs.md`, "Amendments 2026-10-30"). In short:
+First, decide #44's catalog layout: it changes the Repository, so do it before more hosts read it.
 #28 is done and the Soak (#29) is running: its manual criteria (a revision flip under load, the cache at or
 under quota, a local build and GC that leave the Lower Store alone, one canary to cache Mode and back) are
 the work of the week. #26 closes once Publishes go through, and those Publishes count toward the Soak's
-three; #37 closes once one of them builds `profile-docker-host`. Then, before any non-canary host moves, the whitelist alert (#20), every host's Group in NetBox
+three. Then, before any non-canary host moves, the whitelist alert (#20), every host's Group in NetBox
 (#30) and a client-roles Semaphore template with a host limit; then the Rollouts #31–#34. #21 (vm-service in
 `docker-host`, done in `v0.6.0`) and #25 (Renovate) are independent; #21 gates the `docker-host` Rollout.
 When Renovate is enabled, give its app access to grmhay/vm-service too, or it cannot see the tags.
@@ -182,7 +204,8 @@ projects get the loop and the triage labels doc on `copier update`; their `CLAUD
   (`mc alias set …`) in their own block, then the rest after a break. A pasted block loses the rest to the new
   shell or the password prompt. `server/minio/RUNBOOK.md` §2 shows the layout.
 - Only `*.enc.yaml` is committed (age recipient shared with homelab-opscontrolplane). Never print secret values.
-- Confirm before outward-facing actions (issues, PRs, pushes) unless asked.
+- Confirm before outward-facing actions (issues, PRs, pushes) unless asked. Auto mode also blocks filing an
+  issue the user did not ask for.
 
 ## Other loose ends
 
