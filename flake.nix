@@ -145,7 +145,15 @@
         };
       })
     // flake-utils.lib.eachDefaultSystem (system:
-      let pkgs = import nixpkgs { inherit system; };
+      let
+        pkgs = import nixpkgs {
+          inherit system;
+          ## nixpkgs marks mc insecure because upstream abandoned it. It is the
+          ## workstation's MinIO admin client (server/minio/RUNBOOK.md), which
+          ## awscli2 and rclone cannot replace; permitted at this version only,
+          ## so a bump that changes it fails here again.
+          config.permittedInsecurePackages = [ "minio-client-2025-08-13T08-35-41Z" ];
+        };
       in {
         devShells.default = pkgs.mkShell {
           buildInputs = with pkgs; [
