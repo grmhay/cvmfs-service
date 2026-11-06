@@ -1,6 +1,6 @@
 # Handover
 
-State of the work as of **2026-11-05**. Design: `plans/0001-nix-over-cvmfs.md`; vocabulary: `CONTEXT.md`.
+State of the work as of **2026-11-06**. Design: `plans/0001-nix-over-cvmfs.md`; vocabulary: `CONTEXT.md`.
 The work left is the spec #23 (phases 2–5, from the canaries to the whole fleet) and its tickets #24–#34.
 
 Phases 0 and 1 are done. The Repository `nix.hayweb.org` is live: the Publisher's reconciler publishes every
@@ -9,13 +9,13 @@ Group's Profile to `canary` for both systems, the Cache serves it, and the white
 sandbox on, and **the Soak (#29) has started**: earliest sign-off 2026-11-06.
 
 The repo side of #23 is merged (#36, then the fixes #39, #41, #52 and #53) and released as collection
-`v0.6.4` (e4ab9cb), which ansible-lab-config pins (its bc6393aa). #28, #35, #37, #41, #42 and #44 are closed; #26 waits
-on Publishes. The fleet came back cleanly from the reboots of 2026-11-01. The weekly GC, which had never
+`v0.6.4` (e4ab9cb), which ansible-lab-config pins (its bc6393aa). #26, #28, #30, #35, #37, #41, #42 and #44 are closed. The fleet came back cleanly from the reboots of 2026-11-01. The weekly GC, which had never
 finished anywhere, was fixed on 2026-11-03 (#42). Since revision 8 (2026-11-04) the Lower Store is one nested
 catalog at `/nix` (#44, ADR 0006), and published paths pass `nix store verify`. Revision 9 (the nixpkgs
 bump #49) is the Soak's first counted Publish, and the revision-flip criterion passed on it. GC now finishes on
 every union host but logs `BUG:` lines (#50). On 2026-11-05 every manual Soak criterion passed, the last
-being one canary to cache Mode and back, with no hand repair, on `v0.6.4`. See "Since 2026-10-30" below.
+being one canary to cache Mode and back, with no hand repair, on `v0.6.4`. On 2026-11-06 every host got an
+explicit Group and Channel in NetBox (#30), and the inventory groups hosts by Group. See "Since 2026-10-30" below.
 
 ## Since 2026-10-30 (to 2026-11-05)
 
@@ -27,7 +27,7 @@ PATH: use `/nix/var/nix/profiles/default/bin/nix`. Where this section and the tw
 
 | Item | State on 2026-11-05 |
 |---|---|
-| Collection | `v0.6.4` pinned in ansible-lab-config (bc6393aa, its #154). `v0.6.3` (#52): leaving union Mode for cache Mode fetches every missing store path (`files/fill-missing-paths.sh`; `nix-store --verify --repair` does not), returning to union removes cache Mode's puller and `fleet` profile, and the client reloads cvmfs whenever the live quota differs from NetBox's. `v0.6.4` (#53): the puller's timer gets a first pull (`OnActiveSec`). ansible-lab-config's #152 sets `force_handlers` on the clients wrapper. #54 (open) only stops the fill task from always reporting changed |
+| Collection | `v0.6.4` pinned in ansible-lab-config (bc6393aa, its #154). `v0.6.3` (#52): leaving union Mode for cache Mode fetches every missing store path (`files/fill-missing-paths.sh`; `nix-store --verify --repair` does not), returning to union removes cache Mode's puller and `fleet` profile, and the client reloads cvmfs whenever the live quota differs from NetBox's. `v0.6.4` (#53): the puller's timer gets a first pull (`OnActiveSec`). ansible-lab-config's #152 sets `force_handlers` on the clients wrapper. #54 (merged, unreleased) only stops the fill task from always reporting changed |
 | Agent access | The agent can SSH as `ansible@` to the canaries, pi5 and pi6 (NOPASSWD sudo), not to the NetBox hosts. It drives Semaphore through its API (`~/.config/semaphore/token`) and NetBox through its API (`~/.config/netbox/token`, with NetBox's self-signed certificate pinned as `~/.config/netbox/netbox.crt`; fingerprint confirmed by the operator on netbox1). It asks before every template launch and every NetBox write, and journals each NetBox change on the object |
 | nixbuild key | Rotated (#41; the old private key had been exposed in an agent session). New key `SHA256:VM9tUJC5pdsqyAApLQ0yRgI/Gt1L7Ufk/WTqmS304kY` in `publisher.enc.yaml`; `cvmfs: publisher` task 245, then `cvmfs: builders` task 246 (authorised the new key, revoked the old one on pi5 and pi6). Verified 11-03: on the Publisher, `sudo /nix/var/nix/profiles/default/bin/nix store info --store ssh://nixbuild@pi5` (and `@pi6`) answers with no password prompt. Use the short names: root's `/root/.ssh/config` matches `Host pi5`/`pi6` only, so an FQDN offers the wrong key and falls back to a password |
 | Reboots of 2026-11-01 | The Publisher, pi6, pi7, nixcanary-deb1 and nixcanary-rhel1 booted at about 01:00. On each: `/nix/store` on `fuse.mergerfs`, `nix-daemon.socket` active, no ordering cycle in `journalctl -b` (#35 holds unattended). pi5 (up since 10-25) and cache1 (since 10-30 12:52) did not reboot; whether they should have is **unverified**. `systemctl is-system-running` was `degraded` only because of `nix-gc.service` |
@@ -94,81 +94,83 @@ a cloud host (now #27). #6, #9 and #13 wait on a Nix release with the chroot-par
 The order and the gates are in the plan (`plans/0001-nix-over-cvmfs.md`, "Amendments 2026-10-30"). In short:
 #28 is done and the Soak (#29) is running: its manual criteria (a revision flip under load, the cache at or
 under quota, a local build and GC that leave the Lower Store alone, one canary to cache Mode and back) are
-the work of the week. #26 closes once Publishes go through, and those Publishes count toward the Soak's
-three. Then, before any non-canary host moves, the whitelist alert (#20), every host's Group in NetBox
-(#30) and a client-roles Semaphore template with a host limit; then the Rollouts #31–#34. #21 (vm-service in
+the work of the week, and all passed on 2026-11-05; sign-off is the operator's, from 2026-11-06. #26 is
+closed. Then, before any non-canary host moves, the whitelist alert (#20) and a client-roles Semaphore
+template with a host limit (every host's Group in NetBox, #30, is done); then the Rollouts #31–#34. #21 (vm-service in
 `docker-host`, done in `v0.6.0`) and #25 (Renovate) are independent; #21 gates the `docker-host` Rollout.
 When Renovate is enabled, give its app access to grmhay/vm-service too, or it cannot see the tags.
 
-## Draft: Group per host
+## Group per host (#30, done)
 
-The input to #30, for the operator to correct. **Refreshed from live NetBox on 2026-11-05**: every
-`status: active` device the inventory targets (`nb_inventory.yml` filters out switches, APs, routers, UPSs
-and the ATS) and every active VM. No VM has appeared since the 10-28 draft. "OS/arch" is *live* where SSH as
-`ansible@` answered. Elsewhere it is NetBox's platform, which is **stale** wherever it could be checked: it says
-Bookworm for pi5, pi6 and pi7 and Debian 12 for skyline, and all four run Debian 13. Of the 35 hosts, 8
-answered; 24 refuse the agent's key and labserver5–7 time out. A fact gather from pi5's controller would fill the column
-in one run (see the questions below). "NetBox now" is the live `nix_group`/`nix_channel`. *Unset* means
-no custom field, which the inventory reads as `base`/`stable`. `nix_group` is a select field (base,
-docker-host, proxmox-node, cloud, builder) on devices and VMs.
+Every host the inventory targets has an explicit `nix_group` and `nix_channel` in NetBox since 2026-11-06
+(journal entries 3–60), as drafted here and confirmed by the operator. The inventory's `keyed_groups` puts
+each host in one group per Group: `nix_group_base`, `nix_group_docker_host`, `nix_group_proxmox_node`,
+`nix_group_cloud`, `nix_group_builder` (ansible-lab-config #155, #156; keyed_groups turns hyphens into
+underscores). A Rollout limits a client run with `--limit nix_group_<Group>`. `tests/test_nix_inventory.sh`
+on pi5 (lab-config fc467dc9) checks both and passes with 0 failures.
 
-| Host | Kind | OS/arch | NetBox now | Draft Group | Notes |
+The hosts are every `status: active` device the inventory targets (`nb_inventory.yml` filters out
+switches, APs, routers, UPSs and the ATS) and every active VM. "OS/arch" is from an Ansible fact gather of
+all 35 hosts on 2026-11-05 (pi5's controller, `~ansible/os-facts.txt`); **bold** marks Debian 12, which is
+not a supported client. NetBox's platform field is stale for most hosts (it still says Bookworm or PVE 8
+for hosts on Debian 13). `nix_group` is a select field (base, docker-host, proxmox-node, cloud, builder) on
+devices and VMs.
+
+| Host | Kind | OS/arch | Group | Channel | Notes |
 |---|---|---|---|---|---|
-| `publisher` | VM | Debian 13 x86_64 (live) | builder/canary | `builder` | The Publisher. No NetBox platform |
-| `pi5` | device | Debian 13 aarch64 (live) | builder/stable | `builder` | Builder; also a docker host (`[portainer]`) |
-| `pi6` | device | Debian 13 aarch64 (live) | builder/stable | `builder` | Builder |
-| `cache1` | VM | Debian 13 x86_64 (live) | unset (role `nix_cache`) | `base` | Not a client: `clients.yml` excludes `nix_cache`. Set `base` explicitly anyway |
-| `pi7` | device | Debian 13 aarch64 (live) | base/canary | `base` | Canary host |
-| `nixcanary-deb1` | VM | Debian 13 x86_64 (live) | base/canary | `base` | Canary host |
-| `nixcanary-rhel1` | VM | RHEL 10.2 x86_64 (live) | base/canary | `base` | Canary host |
-| `pi1` | device | RPi OS Bookworm | unset | `base` | The Ansible controller |
-| `pi3` | device | RPi OS Bookworm | unset | `base` | |
-| `pi4` | device | RPi OS Bookworm | unset | `base` | `pidnsdev` |
-| `pi12` | device | RPi OS Bookworm | unset | `base` | |
-| `pijump1` | device | RPi OS Bookworm | unset | `base` | Jump host |
-| `pijump2` | device | RPi OS Bookworm | unset | `base` | Jump host |
-| `pi17` | device | RPi OS Bookworm | unset | `base` | `pidns1`, DNS server |
-| `pi18` | device | RPi OS Bookworm | unset | `base` | `pidns2`, DNS server |
-| `unifi` | device | Debian 12 | unset | `base` | |
-| `netbox1` | VM | Debian 12 | unset | `base` | |
-| `netbox2` | VM | Debian 12 | unset | `base` | |
-| `dhcp1` | VM | Debian 12 | unset | `base` | |
-| `dhcp2` | VM | Debian 12 | unset | `base` | |
-| `dhcptest` | VM | Debian 12 | unset | `base` | |
-| `claudecourse` | VM | Debian 12 | unset | `base` | Distro `nix-bin` 2.26.3; migrated in the `base` Rollout (#31) |
-| `skyline` | device | Debian 13 x86_64 (live) | unset | `docker-host` | vm-service, Caddy and the ops stacks |
-| `librenms` | device | Debian 12 | unset | `docker-host` | `[portainer]`; NetBox role `monitoring` |
-| `pi2` | device | RPi OS Bookworm | unset | `docker-host` | `[portainer]`; Loki |
-| `pi9` | device | RPi OS Bookworm | unset | `docker-host` | `[portainer]` |
-| `labserver5` | device | Proxmox VE 9 (NetBox) | unset | `proxmox-node` | Saddlehorn; first wave of its Rollout |
-| `labserver6` | device | Proxmox VE 9 (NetBox) | unset | `proxmox-node` | Saddlehorn; first wave |
-| `labserver7` | device | Proxmox VE 9 (NetBox) | unset | `proxmox-node` | Saddlehorn; first wave |
-| `labservera` | device | Proxmox VE 9 | unset | `proxmox-node` | Saddlehorn2 |
-| `labserverb` | device | Proxmox VE 9 | unset | `proxmox-node` | Saddlehorn2 |
-| `labserverc` | device | Proxmox VE 9 | unset | `proxmox-node` | Saddlehorn2 |
-| `labserverd` | device | Proxmox VE 9 | unset | `proxmox-node` | Saddlehorn2 |
-| `labserverw1` | device | Proxmox VE 9 | unset | `proxmox-node` | Standalone node |
-| `proxmoxbackup1` | device | Proxmox VE 8 / PBS | unset | `proxmox-node` | Backup server; NetBox role `storage` |
+| `publisher` | VM | Debian 13 x86_64 | `builder` | `canary` | The Publisher. No NetBox platform |
+| `pi5` | device | Debian 13 aarch64 | `builder` | `stable` | Builder; also a docker host (`[portainer]`) |
+| `pi6` | device | Debian 13 aarch64 | `builder` | `stable` | Builder |
+| `cache1` | VM | Debian 13 x86_64 | `base` | `stable` | Not a client: `clients.yml` excludes `nix_cache` |
+| `pi7` | device | Debian 13 aarch64 | `base` | `canary` | Canary host |
+| `nixcanary-deb1` | VM | Debian 13 x86_64 | `base` | `canary` | Canary host |
+| `nixcanary-rhel1` | VM | RHEL 10.2 x86_64 | `base` | `canary` | Canary host |
+| `pi1` | device | Debian 13 aarch64 | `base` | `stable` | The Ansible controller |
+| `pi3` | device | Debian 13 aarch64 | `base` | `stable` |  |
+| `pi4` | device | Debian 13 aarch64 | `base` | `stable` | `pidnsdev` |
+| `pi12` | device | Debian 13 aarch64 | `base` | `stable` |  |
+| `pijump1` | device | **Debian 12 aarch64** | `base` | `stable` | Jump host |
+| `pijump2` | device | Debian 13 aarch64 | `base` | `stable` | Jump host |
+| `pi17` | device | Debian 13 aarch64 | `base` | `stable` | `pidns1`, DNS server |
+| `pi18` | device | Debian 13 aarch64 | `base` | `stable` | `pidns2`, DNS server |
+| `unifi` | device | **Debian 12 x86_64** | `base` | `stable` |  |
+| `netbox1` | VM | **Debian 12 x86_64** | `base` | `stable` |  |
+| `netbox2` | VM | **Debian 12 x86_64** | `base` | `stable` |  |
+| `dhcp1` | VM | **Debian 12 x86_64** | `base` | `stable` |  |
+| `dhcp2` | VM | **Debian 12 x86_64** | `base` | `stable` |  |
+| `dhcptest` | VM | **Debian 12 x86_64** | `base` | `stable` |  |
+| `claudecourse` | VM | Debian 13 x86_64 | `base` | `stable` | On Debian 13 now (the 10-28 draft said 12). Distro `nix-bin` 2.26.3; migrated in the `base` Rollout (#31) |
+| `skyline` | device | Debian 13 x86_64 | `docker-host` | `stable` | vm-service, Caddy and the ops stacks |
+| `librenms` | device | **Debian 12 x86_64** | `docker-host` | `stable` | `[portainer]`; NetBox role `monitoring` |
+| `pi2` | device | **Debian 12 aarch64** | `docker-host` | `stable` | `[portainer]`; Loki |
+| `pi9` | device | Debian 13 aarch64 | `docker-host` | `stable` | `[portainer]` |
+| `labserver5` | device | Debian 13 x86_64 (PVE 9) | `proxmox-node` | `stable` | Saddlehorn; first wave of its Rollout |
+| `labserver6` | device | Debian 13 x86_64 (PVE 9) | `proxmox-node` | `stable` | Saddlehorn; first wave |
+| `labserver7` | device | Debian 13 x86_64 (PVE 9) | `proxmox-node` | `stable` | Saddlehorn; first wave |
+| `labservera` | device | Debian 13 x86_64 (PVE 9) | `proxmox-node` | `stable` | Saddlehorn2 |
+| `labserverb` | device | Debian 13 x86_64 (PVE 9) | `proxmox-node` | `stable` | Saddlehorn2 |
+| `labserverc` | device | Debian 13 x86_64 (PVE 9) | `proxmox-node` | `stable` | Saddlehorn2 |
+| `labserverd` | device | Debian 13 x86_64 (PVE 9) | `proxmox-node` | `stable` | Saddlehorn2 |
+| `labserverw1` | device | Debian 13 x86_64 (PVE 9) | `proxmox-node` | `stable` | Standalone node |
+| `proxmoxbackup1` | device | Debian 13 x86_64 (PBS) | `proxmox-node` | `stable` | Backup server; NetBox role `storage` |
 
 Not in the inventory, so no Group: `imagebuilder` (RHEL 8, `decommissioning`), the VM `grow-test-rhel2`
 (`failed`), and `filer1` (TrueNAS, which hosts the Origin; static `[truenas]` only). labserver3 and labserver4
 are **no longer in NetBox at all**. `pinger` is not in NetBox yet and gets `cloud`/`stable` when it is
 registered (#27).
 
-Open questions for #30 and #31:
+Decided with the operator (2026-11-05) for #31–#34:
 
-- **Debian 12 and Raspberry Pi OS Bookworm.** The supported clients are Debian 13 and RHEL 10, and #23 does
-  not add Debian 12. By NetBox, 18 of the 27 unchecked hosts are Bookworm or Debian 12 (the other 9 are Proxmox), but
-  NetBox's platform was wrong for every host that could be checked. A read-only fact gather from the
-  controller settles it in one run:
-  `~/ansible-venv/bin/ansible all -i nb_inventory.yml --vault-password-file vault/vault_pass.txt -T 10 -m setup -a 'filter=ansible_distribution*,ansible_architecture' -o`,
-  run as `ansible` on pi5 from `/etc/ansible-lab-config`. Each Group's Rollout needs its hosts on a
-  supported OS first, or an explicit decision. Correcting NetBox's platforms would help too.
-- **Saddlehorn's Proxmox version.** The plan's first `proxmox-node` wave is Saddlehorn (labserver5–7)
-  "so a cluster-wide effect shows on the older PVE 8 cluster first", but NetBox says PVE 9 for all three.
-  If they were upgraded, the first wave loses that reason.
-- **The Pis' architecture.** pi5, pi6 and pi7 are aarch64. The others are unchecked (Raspberry Pi OS can be 32-bit).
-- pi5 is both a Builder and a docker host; its Group stays `builder` here.
+- **Debian 12: nine hosts** (dhcp1, dhcp2, dhcptest, netbox1, netbox2, pijump1 and unifi in `base`;
+  librenms and pi2 in `docker-host`). The supported clients are Debian 13 and RHEL 10: each is upgraded to
+  Debian 13 before its Group's Rollout. Every `proxmox-node` and Builder host is on Debian 13.
+- **Saddlehorn stays the first `proxmox-node` wave.** labserver5–7 run PVE 9 like every other node, so
+  the plan's reason ("the older PVE 8 cluster") no longer holds, but it is still the older cluster.
+- **Architecture:** every Pi is aarch64 and everything else is x86_64. The first waves are then:
+  `base`: Debian 13 x86_64 (claudecourse) and Debian 13 aarch64 (one Pi); `docker-host`: skyline (x86_64)
+  and pi9 (aarch64); `proxmox-node`: x86_64 only.
+- pi5 is both a Builder and a docker host; its Group is `builder`.
+- NetBox's platform field is stale on most hosts; correcting it would help the Rollouts.
 
 ## Triage conventions
 
