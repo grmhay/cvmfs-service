@@ -11,12 +11,15 @@
   loop:
     - fleet-profile.service
     - fleet-profile.timer
+  register: _puller_units
   notify: Reload systemd
 
+# Restarted when its units change: a running timer keeps the schedule it
+# started with, and OnActiveSec (the first pull) counts from its start.
 - name: Enable the puller
   become: true
   ansible.builtin.systemd:
     name: fleet-profile.timer
     enabled: true
-    state: started
+    state: "{{ 'restarted' if _puller_units is changed else 'started' }}"
     daemon_reload: true

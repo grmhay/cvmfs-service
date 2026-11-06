@@ -1,8 +1,14 @@
 [Unit]
 Description=Pull the Group Profile every 5 minutes (cache mode)
 
+# OnUnitActiveSec counts from the service's last start, and systemd forgets
+# that once the service is unloaded (a host back in cache Mode from union
+# Mode, #29 criterion 6, task 251): with OnBootSec long past, the timer then
+# never fires. OnActiveSec counts from the timer's own start, so the role's
+# start always schedules a first pull.
 [Timer]
 OnBootSec=2min
+OnActiveSec=1min
 OnUnitActiveSec=5min
 Persistent=true
 
