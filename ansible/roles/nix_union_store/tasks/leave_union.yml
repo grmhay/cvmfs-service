@@ -93,7 +93,9 @@
       environment:
         PATH: /nix/var/nix/profiles/default/bin:/usr/sbin:/usr/bin:/sbin:/bin
       register: _leave_filled
-      changed_when: _leave_filled.stdout is not search('^filled 0$', multiline=True)
+      # The script runs on a terminal: its stderr is in stdout too, and the
+      # last line ends in \r (`...filled 0\r\n`).
+      changed_when: _leave_filled.stdout is not search('filled 0\\s*$')
 
     - name: Start the daemon's socket on the plain /nix/store
       ansible.builtin.systemd:
