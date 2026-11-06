@@ -126,3 +126,24 @@
     fail_msg: "{{ cvmfs_client_mountpoint }} reads from {{ _active }}, not from {{ _urls }}"
     quiet: true
   when: not ansible_check_mode
+
+# A queued "Reload cvmfs" is lost when a later task fails and the play does not
+# force handlers, and the next run sees no change to queue it again: on
+# 2026-11-05 a Canary kept a 20000 MB quota under a default.local of 1000 (#29).
+# So every run compares the quota the mounted client enforces with this one.
+- name: Read the quota the client enforces
+  become: true
+  ansible.builtin.command: cvmfs_talk -i {{ cvmfs_repository | quote }} parameters
+  register: _cvmfs_parameters
+  changed_when: false
+  check_mode: false
+
+- name: Reload cvmfs onto the configured quota
+  become: true
+  vars:
+    _enforced: >-
+      {{ _cvmfs_parameters.stdout | regex_search('(?m)^CVMFS_QUOTA_LIMIT=\d+')
+      | default('', true) | regex_replace('^CVMFS_QUOTA_LIMIT=', '') }}
+  ansible.builtin.command: cvmfs_config reload {{ cvmfs_repository | quote }}
+  changed_when: true
+  when: _enforced != (cvmfs_quota_limit_mb | string)

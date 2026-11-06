@@ -11,6 +11,39 @@
   changed_when: false
   failed_when: false
 
+# A host back from cache Mode: its profile puller would keep installing the
+# Profile into the RW Branch, and PATH no longer reads the fleet profile.
+# The reload below drops the units.
+- name: Look for cache Mode's profile puller
+  ansible.builtin.stat:
+    path: /etc/systemd/system/fleet-profile.timer
+  register: _fleet_puller
+
+- name: Remove cache Mode's profile puller and its profile
+  when: _fleet_puller.stat.exists
+  become: true
+  block:
+    - name: Stop the puller
+      ansible.builtin.systemd:
+        name: fleet-profile.timer
+        state: stopped
+        enabled: false
+
+    - name: Find the fleet profile's links
+      ansible.builtin.find:
+        paths: /nix/var/nix/profiles
+        patterns: ["fleet", "fleet-*-link"]
+        file_type: link
+      register: _fleet_links
+
+    - name: Remove the puller's units and the fleet profile's links
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop: >-
+        {{ ['/etc/systemd/system/fleet-profile.service', '/etc/systemd/system/fleet-profile.timer']
+        + (_fleet_links.files | map(attribute='path') | list) }}
+
 # First: on a first run, /nix/store is readable only until the move below.
 - name: The union's mount unit and the daemon's units
   ansible.builtin.include_tasks: daemon_units_boot_order.yml

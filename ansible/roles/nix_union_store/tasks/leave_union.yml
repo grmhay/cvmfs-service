@@ -51,10 +51,14 @@
 - name: Remove union Mode's units
   ansible.builtin.include_tasks: leave_union_units.yml
 
-- name: Reload systemd onto the units without the union
+# Thin Mode here; cache Mode after the move below, since its daemon units are
+# links into /nix/store, which is the empty mountpoint until then and loads
+# them as not-found.
+- name: Reload systemd onto the units without the union (thin Mode)
   become: true
   ansible.builtin.systemd:
     daemon_reload: true
+  when: cvmfs_nix_mode == "thin"
 
 - name: Back to a plain /nix/store (cache Mode)
   when: cvmfs_nix_mode == "cache"
@@ -74,18 +78,22 @@
       args:
         removes: "{{ nix_rw_root }}/store"
         executable: /bin/bash
-      register: _leave_moved
+
+    - name: Reload systemd onto the units without the union (cache Mode)
+      ansible.builtin.systemd:
+        daemon_reload: true
 
     # The overlay store's database also lists the Lower Store paths that the
-    # RW Branch's paths refer to, and those are not on the local disk. --repair fetches
+    # RW Branch's paths refer to, and those are not on the local disk; fetch
     # them from the substituters nix.conf now names (the Binary Cache first).
-    # Right after the move, not in a handler: the daemon starts on it next.
-    - name: Repair the store's database against its files  # noqa: no-handler
-      ansible.builtin.command: nix-store --verify --repair
+    # Every run, not only after the move: a run that failed here moved the
+    # store already, and the next one would start the daemon on it as it is.
+    - name: Fetch the store paths whose files are missing
+      ansible.builtin.script: fill-missing-paths.sh
       environment:
         PATH: /nix/var/nix/profiles/default/bin:/usr/sbin:/usr/bin:/sbin:/bin
-      when: _leave_moved is changed
-      changed_when: true
+      register: _leave_filled
+      changed_when: _leave_filled.stdout is not search('^filled 0$', multiline=True)
 
     - name: Start the daemon's socket on the plain /nix/store
       ansible.builtin.systemd:
