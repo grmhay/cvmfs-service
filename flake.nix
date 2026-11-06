@@ -131,6 +131,18 @@
               HOME="$TMPDIR" ./store-catalog-marker-test.sh
               touch $out
             '';
+          ## Leaving union Mode for cache Mode fetches every Lower Store path the
+          ## store still lists (#29 criterion 6), on a throwaway store and a file:// cache.
+          fill-missing-paths = pkgs.runCommand "fill-missing-paths-test"
+            { nativeBuildInputs = [ pkgs.bash pkgs.coreutils pkgs.gnugrep pkgs.nix ]; }
+            ''
+              cp ${./ansible/roles/nix_union_store/files/fill-missing-paths.sh} fill-missing-paths.sh
+              cp ${./tests/fill-missing-paths-test.sh} fill-missing-paths-test.sh
+              chmod +x fill-missing-paths.sh fill-missing-paths-test.sh
+              patchShebangs .
+              HOME="$TMPDIR" ./fill-missing-paths-test.sh ./fill-missing-paths.sh
+              touch $out
+            '';
           ## publish.sh's cleanup of the old per-path markers (#44), on a fixture store.
           drop-path-catalogs = pkgs.runCommand "drop-path-catalogs-test"
             { nativeBuildInputs = [ pkgs.bash pkgs.coreutils pkgs.findutils ]; }
