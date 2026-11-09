@@ -80,21 +80,26 @@ unchanged, so there is nothing to escrow again.
 ## Expiry alert
 
 Grafana on skyline alerts before the whitelist runs out, so a resign that keeps failing gets noticed
-(#20). The alert lives in homelab-opscontrolplane, not in this collection:
+(#20). The alert lives in homelab-opscontrolplane (its #151), not in this collection:
 
 - **Probe:** the `cvmfs-whitelist-probe` stack on skyline fetches
   `http://cache1.hayweb.org/cvmfs/nix.hayweb.org/.cvmfswhitelist` every 15 minutes, the way clients
   see it, and logs one logfmt line: `status=ok expires=… expires_epoch=… days_left=…`, or
   `status=error reason=fetch_failed|no_expiry|bad_expiry`. alloy ships the line to pi2's Loki.
-- **Parser:** `publish/whitelist-expiry.sh` here. The probe runs a vendored copy, so if you change
-  the parser, copy it to `environments/prod/cvmfs-whitelist-probe/whitelist-expiry.sh` in the ops repo.
-  Its tests are `tests/whitelist-expiry.sh` and run with busybox under `nix flake check`.
+- **Parser:** `publish/whitelist-expiry.sh` here. The probe runs a copy, taken at v0.6.4, so if you
+  change the parser, tag a release and copy it to
+  `apps/docker-compose/cvmfs-whitelist-probe/whitelist-expiry.sh` in the ops repo (that stack's
+  README has the command). Its tests are `tests/whitelist-expiry.sh` and run with busybox under
+  `nix flake check`.
 - **Rules:** `environments/prod/grafana/provisioning/alerting/cvmfs-whitelist.yaml` in the ops repo,
   folder `cvmfs`:
   - *CVMFS whitelist expires in under 10 days*: the lowest `days_left` of the last hour is under 10.
   - *CVMFS whitelist probe has no good reading*: no `status=ok` line in the last hour. It fires on a
     missing or unparsable whitelist, a failed fetch, a stopped probe and a Loki error. No data counts
     as a failure.
+  - They are file-provisioned and use Grafana's default notification policy. That policy's only
+    contact point is still a placeholder email with SMTP off, so **an alert shows in Grafana but
+    notifies nobody** until a real contact point is configured. The stack's README covers the rest.
 
 With the default weekly timer and a 30-day whitelist, the expiry alert fires after two weekly resigns
 in a row have failed, with at least one try left. When it fires, read the timer's last runs ("Check it"), fix the
