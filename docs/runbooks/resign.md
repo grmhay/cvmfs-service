@@ -97,8 +97,9 @@ Grafana on skyline alerts before the whitelist runs out, so a resign that keeps 
   - *CVMFS whitelist probe has no good reading*: no `status=ok` line in the last hour. It fires on a
     missing or unparsable whitelist, a failed fetch, a stopped probe and a Loki error. No data counts
     as a failure.
-  - Both carry `service=cvmfs`, `severity=critical` and go through Grafana's default notification
-    policy. The rules are file-provisioned, so they are read-only in the UI: change the file.
+  - They are file-provisioned and use Grafana's default notification policy. That policy's only
+    contact point is still a placeholder email with SMTP off, so **an alert shows in Grafana but
+    notifies nobody** until a real contact point is configured. The stack's README covers the rest.
 
 With the default weekly timer and a 30-day whitelist, the expiry alert fires after two weekly resigns
 in a row have failed, with at least one try left. When it fires, read the timer's last runs ("Check it"), fix the
