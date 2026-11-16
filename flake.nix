@@ -11,6 +11,14 @@
     ## newer ruff fails v0.1.0 on rules it did not ship with.
     vm-service.url = "github:grmhay/vm-service/v0.1.0";
     vm-service.inputs.flake-utils.follows = "flake-utils";
+    ## The base Profile's service CLIs. Each keeps its own nixpkgs, like
+    ## vm-service, so its build runs against the lint gate it was tagged with.
+    packer-service.url = "github:grmhay/packer-service/v0.2.0";
+    packer-service.inputs.flake-utils.follows = "flake-utils";
+    dhcp-service.url = "github:grmhay/dhcp-service/v0.1.0";
+    dhcp-service.inputs.flake-utils.follows = "flake-utils";
+    dns-service.url = "github:grmhay/dns-service/v0.1.0";
+    dns-service.inputs.flake-utils.follows = "flake-utils";
   };
 
   outputs = { self, nixpkgs, flake-utils, ... }@inputs:
@@ -89,6 +97,12 @@
           ## The docker-host Profile carries vm-service's CLI and it runs.
           docker-host-vm-service = pkgs.runCommand "docker-host-vm-service" { } ''
             ${profiles.profile-docker-host}/bin/vm_service --help > $out
+          '';
+          ## The base Profile carries the service CLIs, and each one runs.
+          base-service-clis = pkgs.runCommand "base-service-clis" { } ''
+            ${profiles.profile-base}/bin/packer_service --help > $out
+            ${profiles.profile-base}/bin/dhcp-service --help >> $out
+            ${profiles.profile-base}/bin/dns-service --help >> $out
           '';
           ## The whitelist parser's tests (#20) run with busybox alone on PATH,
           ## because the probe container that runs it has no GNU userland either.
