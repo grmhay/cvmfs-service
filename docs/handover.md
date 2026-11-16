@@ -1,13 +1,13 @@
 # Handover
 
-State of the work as of **2026-11-09**. Design: `plans/0001-nix-over-cvmfs.md`; vocabulary: `CONTEXT.md`.
+State of the work as of **2026-11-16**. Design: `plans/0001-nix-over-cvmfs.md`; vocabulary: `CONTEXT.md`.
 The work left is the spec #23 (phases 2–5, from the canaries to the whole fleet) and its tickets #24–#34.
 
 Phases 0 and 1 are done. The Repository `nix.hayweb.org` is live: the Publisher's reconciler publishes every
 Group's Profile to `canary` for both systems, the Cache serves it, and the whitelist re-signs itself weekly
 (#19). **Since the evening of 2026-10-30 the three Canary hosts read it too**, on `canary`, with the build
 sandbox on. **The Soak (#29) was signed off on 2026-11-08**, and the whitelist alerts (#20) went live on skyline
-the same evening.
+the same evening; since 2026-11-15 they page PagerDuty. **The `base` Rollout (#31) started on 2026-11-15.**
 
 The repo side of #23 is merged (#36, then the fixes #39, #41, #52 and #53) and released as collection
 `v0.6.4` (e4ab9cb), which ansible-lab-config pins (its bc6393aa). #26, #28, #30, #35, #37, #41, #42 and #44 are closed. The fleet came back cleanly from the reboots of 2026-11-01. The weekly GC, which had never
@@ -19,14 +19,31 @@ being one canary to cache Mode and back, with no hand repair, on `v0.6.4`. On 20
 explicit Group and Channel in NetBox (#30), and the inventory groups hosts by Group. See "Since 2026-11-06"
 and "Since 2026-10-30" below.
 
+## Since 2026-11-09 (to 2026-11-16)
+
+This section supersedes everything below where they differ. Progress on the Rollout is on #31.
+
+| Item | State on 2026-11-16 |
+|---|---|
+| PagerDuty | **The whitelist alerts page PagerDuty** (homelab-opscontrolplane #155, e94fd19, 2026-11-15). Contact point `pagerduty-cvmfs`, file-provisioned in `environments/prod/grafana/provisioning/alerting/pagerduty.yaml`, with a policy route on `service=cvmfs`; the integration key is `pagerduty_integration_key` in `secrets/prod/grafana.enc.yaml`, rendered into the stack's `.env`. Fire-and-clear on prod: trigger sent 14:52:00, resolve 14:57:00 MST; the operator saw the incident open and resolve. **Every gate before the first Rollout now holds** |
+| Template gate | Met since 2026-11-06, not open as the 11-09 handover said: "cvmfs: clients" asks for `cvmfs_clients_hosts` (a comma-separated pattern) at launch, and ran green on pi7 alone (task 255). The wrapper is ansible-lab-config's `buildhost-all/cvmfs-clients.yml`; it also runs `local.monitoring.add_cvmfs_alloy` |
+| Soak loop | The `tmux -L soakflip` loop on nixcanary-rhel1 was stopped on 2026-11-09 (`kill-server`). No canary runs one now |
+| base Profile | #61 (ed0f5d8) added the homelab services' CLIs: `packer_service` (packer-service v0.2.0), `dhcp-service` (v0.1.0) and `dns-service` (v0.1.0), each with its `-api` and `-mcp` entry points; nothing starts them. They are pinned flake inputs that keep their own nixpkgs, like vm-service, and the check `base-service-clis` runs each one's `--help`. All three repos are private: the Publisher's and CI's token (the fine-grained PAT "cvmfs-service vm-service read") was widened to them. Published to `canary` as revision 13 |
+| Promotes of base | Revision 11 (pointers in #60: `kcz522m5…` x86_64, `hilx4zma…` aarch64), then revision 14 at 19:58 on 11-15 with the CLIs (#62: `6wzfh12f…` x86_64, `synapxqn…` aarch64). Run on the Publisher as `publisher`, under `flock ~/.local/state/cvmfs-publish/publish.lock`, without `--commit`; the pointers are recorded by PR from a checkout. Hosts on `stable/base` switched to revision 14 by themselves |
+| claudecourse | Distro Nix (`nix-bin` 2.26.3) removed by hand as `nix_union_store` prescribes; `/nix.distro` (22 MB) kept. Its `~/.nix-profile` links for grmhay and root dangle (optional cleanup) |
+| Wave 1 (11-15) | pi12 (Semaphore task 263) and claudecourse (task 264, after ansible-lab-config#174 created the missing `/usr/local/libexec` for `add_cvmfs_alloy`). Both green, on `stable/base` |
+| Cache quota | The client defaults to 20000 MB under `/var/lib/cvmfs` on `/`, more than the 7–10 GB free on the small VMs. `cvmfs_quota_limit_mb` is **4000** in NetBox on dhcp1, dhcp2, dhcptest, netbox1, netbox2 and claudecourse (journal entries 61–66); claudecourse was re-run to apply it (task 265, 243 MB used). Check free space on `/` before every wave |
+| Wave 2 | 12 hosts, all on Debian 13 now: pi1, pi3, pi4, pi17, pi18, pijump1, pijump2, dhcp1, dhcp2, dhcptest, netbox1 and netbox2. Pre-flight on 11-15 20:05 passed (no Nix, no `/nix`, dpkg lock free). Scheduled for 2026-11-16 15:23, after the 24-hour gate; see #31 for the result. **unifi** is still on Debian 12 and joins after its upgrade |
+| Resign | Mon 2026-11-16 03:00:01: `whitelist re-signed`, `Result=success`. The Cache serves a whitelist signed 2026-11-16 10:00 UTC, expiring 2026-12-16 10:00 UTC. Next run Mon 2026-11-23 03:00 |
+
 ## Since 2026-11-06 (to 2026-11-09)
 
 This section supersedes the tables below where they differ.
 
 | Item | State on 2026-11-09 |
 |---|---|
-| Soak (#29) | **Signed off and closed 2026-11-08.** The operator counted revisions 7, 8 and 10 as Soak Publishes. Revision 10 (Publisher, 2026-11-05 17:34:17; client role only, 4872415) reached all three canaries by itself, with no remount. The sign-off comment on #29 has the table. The `tmux -L soakflip` loop is still running on nixcanary-rhel1 (created 11-04 06:23); it has exited on pi7 and nixcanary-deb1. Stop it with `tmux -L soakflip kill-server` as `ansible` |
-| Whitelist alerts (#20) | **Live on skyline since 2026-11-08** (homelab-opscontrolplane #151, shipped in its #153, 57b56e1). The `cvmfs-whitelist-probe` stack fetches `.cvmfswhitelist` from the Cache every 15 minutes and logs `status=ok … days_left=N`, using a copy of `publish/whitelist-expiry.sh` taken at v0.6.4. Two Grafana rules, provisioned from `environments/prod/grafana/provisioning/alerting/cvmfs-whitelist.yaml`: under 10 days left, and no good reading in an hour. Both were fired and cleared live (results on #151). **Nothing is notified yet**: the default contact point is a placeholder email with SMTP off, so the gate's "alert is live" is only half met until a real contact point exists. Days left is not on a dashboard yet; that belongs with #152 in that repo. The runbook's "Expiry alert" section (`docs/runbooks/resign.md`, #58) documents it all |
+| Soak (#29) | **Signed off and closed 2026-11-08.** The operator counted revisions 7, 8 and 10 as Soak Publishes. Revision 10 (Publisher, 2026-11-05 17:34:17; client role only, 4872415) reached all three canaries by itself, with no remount. The sign-off comment on #29 has the table. The `tmux -L soakflip` loops have all stopped: rhel1's was killed on 2026-11-09 |
+| Whitelist alerts (#20) | **Live on skyline since 2026-11-08** (homelab-opscontrolplane #151, shipped in its #153, 57b56e1). The `cvmfs-whitelist-probe` stack fetches `.cvmfswhitelist` from the Cache every 15 minutes and logs `status=ok … days_left=N`, using a copy of `publish/whitelist-expiry.sh` taken at v0.6.4. Two Grafana rules, provisioned from `environments/prod/grafana/provisioning/alerting/cvmfs-whitelist.yaml`: under 10 days left, and no good reading in an hour. Both were fired and cleared live (results on #151). Since 2026-11-15 they page PagerDuty (see "Since 2026-11-09"). Days left is not on a dashboard yet; that belongs with #152 in that repo. The runbook's "Expiry alert" section (`docs/runbooks/resign.md`, #58) documents it all |
 | ops deploys | homelab-opscontrolplane's `deploy-stack.sh` now exports `STACK_CONFIG_HASH`, a hash of the stack's tracked files. A service that sets the label `ops.config-hash` is recreated when one of those files changes; `docker compose up -d` alone does not do that for a bind-mounted file |
 | Resign | Mon 2026-11-09 03:00:00: `whitelist re-signed`, the service exited successfully. The Cache serves a whitelist signed 2026-11-09 10:00 UTC, expiring 2026-12-09 10:00 UTC. Next run Mon 2026-11-16 03:00 |
 
@@ -107,9 +124,10 @@ a cloud host (now #27). #6, #9 and #13 wait on a Nix release with the chroot-par
 
 The order and the gates are in the plan (`plans/0001-nix-over-cvmfs.md`, "Amendments 2026-10-30"). In short:
 #28 is done, and the Soak (#29) was signed off on 2026-11-08. #26 is closed. The whitelist alerts (#20)
-are live but notify nobody until a real contact point is chosen in Grafana. Every host's Group is in NetBox (#30).
-The gates left before any non-canary host moves are that contact point and a client-roles Semaphore
-template with a host limit. Then come the Rollouts #31–#34. #21 (vm-service in
+page PagerDuty, every host's Group is in NetBox (#30), and "cvmfs: clients" takes a host limit, so every
+gate holds. The `base` Rollout (#31) is under way: wave 1 is done and wave 2 is due 2026-11-16; unifi
+follows after its Debian 13 upgrade. At the end of #31, close ansible-lab-config #32 and retire its
+`add_nix_gc` (#119), linking #31. Then come #32–#34. #21 (vm-service in
 `docker-host`, done in `v0.6.0`) and #25 (Renovate) are independent; #21 gates the `docker-host` Rollout.
 When Renovate is enabled, give its app access to grmhay/vm-service too, or it cannot see the tags.
 
@@ -124,7 +142,8 @@ on pi5 (lab-config fc467dc9) checks both and passes with 0 failures.
 
 The hosts are every `status: active` device the inventory targets (`nb_inventory.yml` filters out
 switches, APs, routers, UPSs and the ATS) and every active VM. "OS/arch" is from an Ansible fact gather of
-all 35 hosts on 2026-11-05 (pi5's controller, `~ansible/os-facts.txt`); **bold** marks Debian 12, which is
+all 35 hosts on 2026-11-05 (pi5's controller, `~ansible/os-facts.txt`), updated for the operator's Debian 13
+upgrades to 2026-11-15; **bold** marks Debian 12, which is
 not a supported client. NetBox's platform field is stale for most hosts (it still says Bookworm or PVE 8
 for hosts on Debian 13). `nix_group` is a select field (base, docker-host, proxmox-node, cloud, builder) on
 devices and VMs.
@@ -141,21 +160,21 @@ devices and VMs.
 | `pi1` | device | Debian 13 aarch64 | `base` | `stable` | The Ansible controller |
 | `pi3` | device | Debian 13 aarch64 | `base` | `stable` |  |
 | `pi4` | device | Debian 13 aarch64 | `base` | `stable` | `pidnsdev` |
-| `pi12` | device | Debian 13 aarch64 | `base` | `stable` |  |
-| `pijump1` | device | **Debian 12 aarch64** | `base` | `stable` | Jump host |
+| `pi12` | device | Debian 13 aarch64 | `base` | `stable` || On `stable/base` since wave 1 (#31) |
+| `pijump1` | device | Debian 13 aarch64 | `base` | `stable` | Jump host |
 | `pijump2` | device | Debian 13 aarch64 | `base` | `stable` | Jump host |
 | `pi17` | device | Debian 13 aarch64 | `base` | `stable` | `pidns1`, DNS server |
 | `pi18` | device | Debian 13 aarch64 | `base` | `stable` | `pidns2`, DNS server |
 | `unifi` | device | **Debian 12 x86_64** | `base` | `stable` |  |
-| `netbox1` | VM | **Debian 12 x86_64** | `base` | `stable` |  |
-| `netbox2` | VM | **Debian 12 x86_64** | `base` | `stable` |  |
-| `dhcp1` | VM | **Debian 12 x86_64** | `base` | `stable` |  |
-| `dhcp2` | VM | **Debian 12 x86_64** | `base` | `stable` |  |
-| `dhcptest` | VM | **Debian 12 x86_64** | `base` | `stable` |  |
-| `claudecourse` | VM | Debian 13 x86_64 | `base` | `stable` | On Debian 13 now (the 10-28 draft said 12). Distro `nix-bin` 2.26.3; migrated in the `base` Rollout (#31) |
+| `netbox1` | VM | Debian 13 x86_64 | `base` | `stable` || Quota 4000 MB |
+| `netbox2` | VM | Debian 13 x86_64 | `base` | `stable` || Quota 4000 MB |
+| `dhcp1` | VM | Debian 13 x86_64 | `base` | `stable` || Quota 4000 MB |
+| `dhcp2` | VM | Debian 13 x86_64 | `base` | `stable` || Quota 4000 MB |
+| `dhcptest` | VM | Debian 13 x86_64 | `base` | `stable` || Quota 4000 MB |
+| `claudecourse` | VM | Debian 13 x86_64 | `base` | `stable` | Distro `nix-bin` removed; on `stable/base` since wave 1 (#31). Quota 4000 MB |
 | `skyline` | device | Debian 13 x86_64 | `docker-host` | `stable` | vm-service, Caddy and the ops stacks |
-| `librenms` | device | **Debian 12 x86_64** | `docker-host` | `stable` | `[portainer]`; NetBox role `monitoring` |
-| `pi2` | device | **Debian 12 aarch64** | `docker-host` | `stable` | `[portainer]`; Loki |
+| `librenms` | device | Debian 13 x86_64 | `docker-host` | `stable` | `[portainer]`; NetBox role `monitoring` |
+| `pi2` | device | Debian 13 aarch64 | `docker-host` | `stable` | `[portainer]`; Loki |
 | `pi9` | device | Debian 13 aarch64 | `docker-host` | `stable` | `[portainer]` |
 | `labserver5` | device | Debian 13 x86_64 (PVE 9) | `proxmox-node` | `stable` | Saddlehorn; first wave of its Rollout |
 | `labserver6` | device | Debian 13 x86_64 (PVE 9) | `proxmox-node` | `stable` | Saddlehorn; first wave |
@@ -174,9 +193,9 @@ registered (#27).
 
 Decided with the operator (2026-11-05) for #31–#34:
 
-- **Debian 12: nine hosts** (dhcp1, dhcp2, dhcptest, netbox1, netbox2, pijump1 and unifi in `base`;
+- **Debian 12: nine hosts** on 11-05 (dhcp1, dhcp2, dhcptest, netbox1, netbox2, pijump1 and unifi in `base`;
   librenms and pi2 in `docker-host`). The supported clients are Debian 13 and RHEL 10: each is upgraded to
-  Debian 13 before its Group's Rollout. Every `proxmox-node` and Builder host is on Debian 13.
+  Debian 13 before its Group's Rollout. By 2026-11-15 the operator had upgraded all of them but unifi. Every `proxmox-node` and Builder host is on Debian 13.
 - **Saddlehorn stays the first `proxmox-node` wave.** labserver5–7 run PVE 9 like every other node, so
   the plan's reason ("the older PVE 8 cluster") no longer holds, but it is still the older cluster.
 - **Architecture:** every Pi is aarch64 and everything else is x86_64. The first waves are then:
