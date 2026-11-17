@@ -6,6 +6,8 @@
     "base/x86_64-linux": "/nix/store/6wzfh12f18k2nfjq3dzb674w8ix1cp81-profile-base",
     "base/aarch64-linux": "/nix/store/synapxqnvgcxrrwb5jc5vf63ihnmhx30-profile-base",
     "docker-host/x86_64-linux": "/nix/store/p71nniyplhmzicf551qz87hrxf8m3gw0-profile-docker-host",
-    "docker-host/aarch64-linux": "/nix/store/kjlaxn62ji4wl02kdj7m4f86ys3if4c1-profile-docker-host"
+    "docker-host/aarch64-linux": "/nix/store/kjlaxn62ji4wl02kdj7m4f86ys3if4c1-profile-docker-host",
+    "proxmox-node/x86_64-linux": "/nix/store/jsx86y4b8w0nkyy478147f8kms4wxcm6-profile-proxmox-node",
+    "proxmox-node/aarch64-linux": "/nix/store/h4jq865s1jcw718xwh2nf0y2pjl673dc-profile-proxmox-node"
   }
 }
