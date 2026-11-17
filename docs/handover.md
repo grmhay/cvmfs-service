@@ -7,7 +7,8 @@ Phases 0 and 1 are done. The Repository `nix.hayweb.org` is live: the Publisher'
 Group's Profile to `canary` for both systems, the Cache serves it, and the whitelist re-signs itself weekly
 (#19). **Since the evening of 2026-10-30 the three Canary hosts read it too**, on `canary`, with the build
 sandbox on. **The Soak (#29) was signed off on 2026-11-08**, and the whitelist alerts (#20) went live on skyline
-the same evening; since 2026-11-15 they page PagerDuty. **The `base` Rollout (#31) started on 2026-11-15.**
+the same evening; since 2026-11-15 they page PagerDuty. **Rollouts: `base` (#31) is on 14 of 15 hosts,
+`docker-host` (#32) has wave 1 done, and `proxmox-node` (#33) is paused on a network finding.** 22 hosts run the Union Store.
 
 The repo side of #23 is merged (#36, then the fixes #39, #41, #52 and #53) and released as collection
 `v0.6.4` (e4ab9cb), which ansible-lab-config pins (its bc6393aa). #26, #28, #30, #35, #37, #41, #42 and #44 are closed. The fleet came back cleanly from the reboots of 2026-11-01. The weekly GC, which had never
@@ -18,6 +19,20 @@ every union host but logs `BUG:` lines (#50). On 2026-11-05 every manual Soak cr
 being one canary to cache Mode and back, with no hand repair, on `v0.6.4`. On 2026-11-06 every host got an
 explicit Group and Channel in NetBox (#30), and the inventory groups hosts by Group. See "Since 2026-11-06"
 and "Since 2026-10-30" below.
+
+## Rollouts (2026-11-16, evening)
+
+This section supersedes everything below where they differ. Each Rollout ticket has the detail.
+
+| Item | State on the evening of 2026-11-16 |
+|---|---|
+| `base` (#31) | **Wave 2 green** on 12 hosts (Semaphore task 266): pi1, pi3, pi4, pi17, pi18, pijump1, pijump2, dhcp1, dhcp2, dhcptest, netbox1, netbox2. With wave 1 that is 14 of 15 `base` hosts, all union Mode. **unifi** waits for its Debian 13 upgrade (ansible-lab-config#176, MongoDB 4.4). ansible-lab-config #32 is closed, and `add_nix_gc` was retired in its #179 after a fleet check found it skipping everywhere |
+| `docker-host` (#32) | Promoted as **revision 16** (#65). **Wave 1 green** on skyline and pi9 (task 268, after task 267 failed on pi9's alloy; see below). `vm_service --help` runs from `stable/docker-host` on both systems, and their containers were unaffected. **pi2 and librenms are still on Debian 12** (the earlier handover was wrong), so wave 2 waits for ansible-lab-config#181. Both are bare metal: pi2 runs Loki and the NUT server, librenms the LibreNMS stack |
+| Portainer hosts' alloy | `add_cvmfs_alloy`'s systemd alloy clashed with the Docker alloy, which bind-mounts `/etc/alloy` and runs its `config.alloy`, and keeps its positions in `/var/lib/alloy` (root 0750, ansible-lab-config#146). Task 267 failed to start it on pi9 (CHDIR) and **overwrote pi9's Docker config**. ansible-lab-config#180 (5a8bafb7): on hosts in `portainer`, `group_vars/portainer.yml` sets `cvmfs_alloy_own_paths`, and the systemd alloy runs from `/etc/alloy-cvmfs` and `/var/lib/alloy-cvmfs` through the drop-in `alloy.service.d/cvmfs-paths.conf`. pi9's Docker config was restored with `configure-portainer-alloy-logging.yml -l pi9` (reload in place). The drop-in copies the package wrapper's command line: re-check it on an alloy upgrade |
+| `proxmox-node` (#33) | Promoted as **revision 18** (#66). Wave 1 on Saddlehorn (labserver5–7, task 273) **failed at the Repository mount**: `Failed to initialize root file catalog`. Saddlehorn's `vmbr1` carries 192.168.20.101–103/24 on an **isolated** segment: the nodes reach each other, but not 20.1, NetBox, the Publisher or cache1 (20.119), so every real VLAN 20 address goes out the wrong interface. Saddlehorn2 uses a tagged `vmbr1.20` and reaches cache1. Left behind on Saddlehorn: only the cvmfs packages and `/etc/cvmfs`; no fstab entry and no failed units, and quorum held. **Paused** for the operator's network decision (re-address it, route via Management, or start with Saddlehorn2). All nine nodes run PVE 9; the ticket's "PVE 8" is stale. labserverw1 is `degraded` from an existing `zfs-import-scan.service` failure |
+| Proxmox access | These hosts connect as `ansible`, and become root. Under `become`, the shell's PATH has no `/usr/sbin`: export it for `pvecm`, `qm` and `ha-manager` |
+| New VMs (ansible-lab-config#125) | vm-service master (2014f53, 4d7cc68) runs "cvmfs: clients" after Verify Host. Not deployed (skyline runs a 2026-10-09 image), and `SEMAPHORE_CVMFS_TEMPLATE_ID` (11) is unset. `base` is on `stable`, so it's unblocked; then test with a throwaway VM |
+| Repository | Revisions 15 and 17 published pointer-only commits; the Profiles are unchanged. The `stable` Groups: `builder`, `base` (revision 14), `docker-host` (16) and `proxmox-node` (18) |
 
 ## Since 2026-11-09 (to 2026-11-16)
 
@@ -125,11 +140,11 @@ a cloud host (now #27). #6, #9 and #13 wait on a Nix release with the chroot-par
 The order and the gates are in the plan (`plans/0001-nix-over-cvmfs.md`, "Amendments 2026-10-30"). In short:
 #28 is done, and the Soak (#29) was signed off on 2026-11-08. #26 is closed. The whitelist alerts (#20)
 page PagerDuty, every host's Group is in NetBox (#30), and "cvmfs: clients" takes a host limit, so every
-gate holds. The `base` Rollout (#31) is under way: wave 1 is done and wave 2 is due 2026-11-16; unifi
-follows after its Debian 13 upgrade. At the end of #31, close ansible-lab-config #32 and retire its
-`add_nix_gc` (#119), linking #31. Then come #32–#34. #21 (vm-service in
-`docker-host`, done in `v0.6.0`) and #25 (Renovate) are independent; #21 gates the `docker-host` Rollout.
-When Renovate is enabled, give its app access to grmhay/vm-service too, or it cannot see the tags.
+gate holds. See "Rollouts" above: `base` waits only for unifi, `docker-host` for pi2 and librenms (#181),
+and `proxmox-node` for a decision on Saddlehorn's network. `cloud` (#34) waits for #27. #125 in
+ansible-lab-config (new VMs) is unblocked. #25 (Renovate) is independent.
+When Renovate is enabled, give its app access to grmhay/vm-service, packer-service, dhcp-service and
+dns-service too, or it cannot see the tags.
 
 ## Group per host (#30, done)
 
@@ -143,7 +158,7 @@ on pi5 (lab-config fc467dc9) checks both and passes with 0 failures.
 The hosts are every `status: active` device the inventory targets (`nb_inventory.yml` filters out
 switches, APs, routers, UPSs and the ATS) and every active VM. "OS/arch" is from an Ansible fact gather of
 all 35 hosts on 2026-11-05 (pi5's controller, `~ansible/os-facts.txt`), updated for the operator's Debian 13
-upgrades to 2026-11-15; **bold** marks Debian 12, which is
+upgrades to 2026-11-16 (re-read); **bold** marks Debian 12, which is
 not a supported client. NetBox's platform field is stale for most hosts (it still says Bookworm or PVE 8
 for hosts on Debian 13). `nix_group` is a select field (base, docker-host, proxmox-node, cloud, builder) on
 devices and VMs.
@@ -173,8 +188,8 @@ devices and VMs.
 | `dhcptest` | VM | Debian 13 x86_64 | `base` | `stable` || Quota 4000 MB |
 | `claudecourse` | VM | Debian 13 x86_64 | `base` | `stable` | Distro `nix-bin` removed; on `stable/base` since wave 1 (#31). Quota 4000 MB |
 | `skyline` | device | Debian 13 x86_64 | `docker-host` | `stable` | vm-service, Caddy and the ops stacks |
-| `librenms` | device | Debian 13 x86_64 | `docker-host` | `stable` | `[portainer]`; NetBox role `monitoring` |
-| `pi2` | device | Debian 13 aarch64 | `docker-host` | `stable` | `[portainer]`; Loki |
+| `librenms` | device | **Debian 12 x86_64** | `docker-host` | `stable` | `[portainer]`; NetBox role `monitoring` |
+| `pi2` | device | **Debian 12 aarch64** | `docker-host` | `stable` | `[portainer]`; Loki |
 | `pi9` | device | Debian 13 aarch64 | `docker-host` | `stable` | `[portainer]` |
 | `labserver5` | device | Debian 13 x86_64 (PVE 9) | `proxmox-node` | `stable` | Saddlehorn; first wave of its Rollout |
 | `labserver6` | device | Debian 13 x86_64 (PVE 9) | `proxmox-node` | `stable` | Saddlehorn; first wave |
@@ -195,7 +210,7 @@ Decided with the operator (2026-11-05) for #31–#34:
 
 - **Debian 12: nine hosts** on 11-05 (dhcp1, dhcp2, dhcptest, netbox1, netbox2, pijump1 and unifi in `base`;
   librenms and pi2 in `docker-host`). The supported clients are Debian 13 and RHEL 10: each is upgraded to
-  Debian 13 before its Group's Rollout. By 2026-11-15 the operator had upgraded all of them but unifi. Every `proxmox-node` and Builder host is on Debian 13.
+  Debian 13 before its Group's Rollout. By 2026-11-15 the operator had upgraded the six in #175 and pijump1; unifi (#176), librenms and pi2 (#181) are still on Debian 12. Every `proxmox-node` and Builder host is on Debian 13.
 - **Saddlehorn stays the first `proxmox-node` wave.** labserver5–7 run PVE 9 like every other node, so
   the plan's reason ("the older PVE 8 cluster") no longer holds, but it is still the older cluster.
 - **Architecture:** every Pi is aarch64 and everything else is x86_64. The first waves are then:
