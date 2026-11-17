@@ -135,8 +135,13 @@ nix_max_free: 10G
 #   cache.files=auto-full  page cache on: executables are mmapped
 #   cache.negative_entry=0 a path published after a failed lookup is found next time
 #   cache.entry=1          1 s dentry cache; a revision flip is visible within it
-#   branches-mount-timeout wait for /cvmfs to be there at boot
-mergerfs_options: "category.create=ff,inodecalc=path-hash,cache.files=auto-full,cache.negative_entry=0,cache.entry=1,cache.attr=1,allow_other,branches-mount-timeout=60,fsname=nixstore"
+# No branches-mount-timeout (#64). It waits for *every* branch to be a mount
+# point, and the RW branch is a plain directory on /, so it cost 60 s on every
+# boot of every Union Store host, then mounted anyway ("Continuing to mount
+# mergerfs despite 1 branches not being different from the mountpoint
+# filesystem"): it never guarded anything. What keeps the union off a missing
+# Repository is nix-store.mount's RequiresMountsFor on the client view.
+mergerfs_options: "category.create=ff,inodecalc=path-hash,cache.files=auto-full,cache.negative_entry=0,cache.entry=1,cache.attr=1,allow_other,fsname=nixstore"
 
 # RHEL 10 has no distro package; upstream publishes RPMs per release (spike S1
 # confirms el10.aarch64). Debian 13 ships 2.40.2 natively.
