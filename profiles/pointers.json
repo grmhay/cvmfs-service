@@ -4,6 +4,8 @@
     "builder/x86_64-linux": "/nix/store/hh37hd2ipg98biif0w9vydb5y2v35ypm-profile-builder",
     "builder/aarch64-linux": "/nix/store/gln1fn44hbxvgyq5a29hjg3m1rvir3nj-profile-builder",
     "base/x86_64-linux": "/nix/store/6wzfh12f18k2nfjq3dzb674w8ix1cp81-profile-base",
-    "base/aarch64-linux": "/nix/store/synapxqnvgcxrrwb5jc5vf63ihnmhx30-profile-base"
+    "base/aarch64-linux": "/nix/store/synapxqnvgcxrrwb5jc5vf63ihnmhx30-profile-base",
+    "docker-host/x86_64-linux": "/nix/store/p71nniyplhmzicf551qz87hrxf8m3gw0-profile-docker-host",
+    "docker-host/aarch64-linux": "/nix/store/kjlaxn62ji4wl02kdj7m4f86ys3if4c1-profile-docker-host"
   }
 }
