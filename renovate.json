@@ -30,9 +30,8 @@
       "automerge": true
     },
     {
-      "description": "Service flake inputs (github:grmhay/*) always get a human",
-      "matchDatasources": ["github-tags"],
-      "matchPackagePatterns": ["^grmhay/"],
+      "description": "Service flake inputs (github:grmhay/*) always get a human, whichever manager proposes the update: the tag bumps from the regex manager (packageName grmhay/<repo>) and any digest update from the nix manager (packageName https://github.com/grmhay/<repo>)",
+      "matchPackageNames": ["/(^|github\\.com\\/)grmhay\\//"],
       "automerge": false
     }
   ]
