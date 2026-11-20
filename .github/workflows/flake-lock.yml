@@ -1,0 +1,47 @@
+name: flake-lock
+
+# Weekly `nix flake update` (decision Q15, #25). Renovate can't do it: the Mend
+# job token reaches this repository only, so nix cannot fetch the private
+# grmhay/* service inputs, and Renovate hands nix only that token.
+#
+# The PR is opened with FLAKE_LOCK_PR_TOKEN (fine-grained PAT on cvmfs-service:
+# Contents and Pull requests read/write) because a PR opened with the default
+# GITHUB_TOKEN does not trigger ci.yml. Auto-merge then waits for the required
+# ci checks on master; a red check leaves the PR open for a human.
+on:
+  schedule:
+    - cron: "0 5 * * 1"  # Monday 05:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: flake-lock
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Reads the private service inputs, as in ci.yml (#37).
+      - uses: DeterminateSystems/nix-installer-action@v16
+        with:
+          extra-conf: |
+            access-tokens = github.com=${{ secrets.VM_SERVICE_TOKEN }}
+      - id: update
+        uses: DeterminateSystems/update-flake-lock@v29
+        with:
+          token: ${{ secrets.FLAKE_LOCK_PR_TOKEN }}
+          branch: flake-lock/weekly
+          commit-msg: "chore(deps): weekly nix flake update"
+          pr-title: "chore(deps): weekly nix flake update"
+          pr-labels: |
+            dependencies
+      - name: Auto-merge on green ci
+        if: steps.update.outputs.pull-request-number != ''
+        env:
+          GH_TOKEN: ${{ secrets.FLAKE_LOCK_PR_TOKEN }}
+          PR: ${{ steps.update.outputs.pull-request-number }}
+        run: gh pr merge --auto --merge "$PR" --repo "$GITHUB_REPOSITORY"
