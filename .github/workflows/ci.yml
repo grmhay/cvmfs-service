@@ -14,7 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       # vm-service is a private input; the token reads its contents only (#37).
-      - uses: DeterminateSystems/nix-installer-action@v16
+      - uses: DeterminateSystems/nix-installer-action@v23
         with:
           extra-conf: |
             access-tokens = github.com=${{ secrets.VM_SERVICE_TOKEN }}
@@ -31,7 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: DeterminateSystems/nix-installer-action@v16
+      - uses: DeterminateSystems/nix-installer-action@v23
       - name: shellcheck
         run: nix run nixpkgs#shellcheck -- publish/*.sh spikes/*.sh server/minio/*.sh tests/*.sh ansible/roles/*/files/*.sh
       - name: ansible-lint
