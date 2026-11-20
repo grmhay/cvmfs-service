@@ -1,6 +1,6 @@
 # Handover
 
-State of the work as of **2026-11-19**. Design: `plans/0001-nix-over-cvmfs.md`; vocabulary: `CONTEXT.md`.
+State of the work as of **2026-11-20**. Design: `plans/0001-nix-over-cvmfs.md`; vocabulary: `CONTEXT.md`.
 The work left is the spec #23 (phases 2–5, from the canaries to the whole fleet) and its tickets #24–#34.
 
 Phases 0 and 1 are done. The Repository `nix.hayweb.org` is live: the Publisher's reconciler publishes every
@@ -21,7 +21,7 @@ being one canary to cache Mode and back, with no hand repair, on `v0.6.4`. On 20
 explicit Group and Channel in NetBox (#30), and the inventory groups hosts by Group. See "Since 2026-11-06"
 and "Since 2026-10-30" below.
 
-## Since 2026-11-16 evening (to 2026-11-19)
+## Since 2026-11-16 evening (to 2026-11-20)
 
 This section supersedes everything below where they differ.
 
@@ -37,8 +37,10 @@ This section supersedes everything below where they differ.
 | Observability (homelab-opscontrolplane#152) | **Deployed, closed.** `add_cvmfs_alloy` runs on every client through "cvmfs: clients", and on the Cache and the Publisher. Loki has the `cvmfs-stat` lines, cache1's access log and the publish/resign journals. Grafana dashboard uid `cvmfs-nix` on skyline (#154). The role becomes per role, not per play, because sudo's `secure_path` has no `nix` (#172) |
 | Semaphore after reboot (ansible-lab-config#167) | **Fixed, closed.** Docker on the Semaphore host waits for autofs (`docker.service.d/10-after-autofs.conf`, #178), because the stack bind-mounts from `/shared`. Reboot-tested 11-16 |
 | Access | The agent's key reaches only the canaries, the Publisher and the builders directly. **Every other host is reached by ad-hoc `ansible` on the ansible host, pi5** (`ansible.hayweb.org` is an alias for pi5): `cd /etc/ansible-lab-config && ~/ansible-venv/bin/ansible <hosts> -i nb_inventory.yml --vault-password-file=vault/vault_pass.txt -b …` |
+| Renovate (#25) | **Done, closed 2026-11-20.** The Mend Renovate app is installed on cvmfs-service and the four service repos, in Interactive mode with "Require config file" (repos without `renovate.json` get no onboarding PR). Dependency Dashboard: #75. Each Mend job's token reaches only its own repo, so the private service tags are read with the Mend org secret `GH_RO_PAT` (fine-grained, read-only Contents on vm/packer/dhcp/dns-service) through a `hostType: github-tags` rule (#76); the nix manager's commit lookups of those inputs are off. A tag bump edits `flake.nix` only: run `nix flake update <input>` on the PR's branch and push `flake.lock` before merging. Renovate's GitHub Actions bumps (#73, #74, then nix-installer v23) wait for a human |
+| Weekly lock update | **`.github/workflows/flake-lock.yml`** (#78), not Renovate: Mondays 05:00 UTC (or Run workflow by hand) it runs `nix flake update` with `VM_SERVICE_TOKEN`, opens `chore(deps): weekly nix flake update` with `FLAKE_LOCK_PR_TOKEN` (fine-grained, cvmfs-service Contents + Pull requests RW, so ci runs on it) and auto-merges on green. Ruleset "master: ci must pass" requires `profiles` and `lint` on master, no bypass, so every merge (yours too) waits for ci. First run: #79 (nixpkgs 2026-11-19, flake-utils), merged 11-20 on green, so **the next Publish rebuilds every Profile**. When `GH_RO_PAT` or `FLAKE_LOCK_PR_TOKEN` expires, the tag lookups or the weekly PR fail quietly |
 | Loose ends | `tests/union-mount-order.sh` has **4 pre-existing FAILs on master** (systemd 257); not filed yet. Semaphore still shows stale "running" records for tasks 133, 144, 192 and 208. #50 (GC `BUG:` lines) is untriaged |
-| Next | (1) Cloud: pinger to Debian 13 and into NetBox (#27), then Promote `cloud` and run its Rollout (#34). (2) Renovate app (#25, operator). (3) Then #23. Every on-prem Group is done |
+| Next | (1) Cloud, **on hold by the operator**: pinger to Debian 13 and into NetBox (#27), then Promote `cloud` and run its Rollout (#34). (2) Then #23. Every on-prem Group is done; #25 is closed |
 
 ## Rollouts (2026-11-16, evening)
 
@@ -145,7 +147,7 @@ Publisher Union Store and Canary rows are superseded by "Since the morning" abov
 | Canary sandbox settings | `nix_union_sandbox`/`nix_sandbox_fork` are still not in ansible-lab-config's group vars for `tag_nix_canary` (ansible-lab-config#122, open), so a `cvmfs: clients (canaries)` run would turn their sandbox off. Read from a 10-28 clone of ansible-lab-config |
 | Builders `pi5`, `pi6` | **Unverified**: SSH as `ansible` refuses the key. The Cache's logs suggest they fetch from the Repository |
 | Whitelist | Resigned unattended by `cvmfs-resign.service` (#19). The expiry alert (#20, homelab-opscontrolplane half) is not live |
-| Renovate | Not running: `renovate.json` exists, but no Renovate PR, onboarding PR or Dependency Dashboard on any grmhay repo (10-28). #25. Once it runs, a tag bump of a `grmhay/*` service input (the `customManagers` entry, #21) edits `flake.nix` only: run `nix flake update <input>` on the PR's branch and push `flake.lock` to the PR before merging it |
+| Renovate | (Superseded: running since 2026-11-20, see the top table.) Not running: `renovate.json` exists, but no Renovate PR, onboarding PR or Dependency Dashboard on any grmhay repo (10-28). #25. Once it runs, a tag bump of a `grmhay/*` service input (the `customManagers` entry, #21) edits `flake.nix` only: run `nix flake update <input>` on the PR's branch and push `flake.lock` to the PR before merging it |
 | vm-service curl install | Never existed as automation: the only `curl` is vm-service's README. No `vm_service` binary on the Publisher, the Cache or the canaries (10-28). The service itself runs as a container on skyline |
 | First boot of new VMs | packer-service runs no Ansible; vm-service's post-create chain triggers Semaphore "Buildhost All", then "Verify Host". Nothing in that chain installs CVMFS or Nix (10-28) |
 | Cloud host `pinger` | **Unverified**: `pinger.hayweb.org` does not resolve from here and `pinger` is in neither ansible-lab-config inventory. Debian 12, x86_64 per #23. #27 |
@@ -162,9 +164,7 @@ The order and the gates are in the plan (`plans/0001-nix-over-cvmfs.md`, "Amendm
 page PagerDuty, every host's Group is in NetBox (#30), and "cvmfs: clients" takes a host limit, so every
 gate holds. See "Rollouts" above: `base` waits only for unifi, `docker-host` for pi2 and librenms (#181),
 and `proxmox-node` for a decision on Saddlehorn's network. `cloud` (#34) waits for #27. #125 in
-ansible-lab-config (new VMs) is unblocked. #25 (Renovate) is independent.
-When Renovate is enabled, give its app access to grmhay/vm-service, packer-service, dhcp-service and
-dns-service too, or it cannot see the tags.
+ansible-lab-config (new VMs) is unblocked. #25 (Renovate) is done (top table).
 
 ## Group per host (#30, done)
 
