@@ -33,6 +33,20 @@
       "description": "Service flake inputs (github:grmhay/*) always get a human, whichever manager proposes the update: the tag bumps from the regex manager (packageName grmhay/<repo>) and any digest update from the nix manager (packageName https://github.com/grmhay/<repo>)",
       "matchPackageNames": ["/(^|github\\.com\\/)grmhay\\//"],
       "automerge": false
+    },
+    {
+      "description": "The nix manager's commit (git-refs) lookups of the service inputs need git access the Mend job does not have, and the regex manager's tag bumps already cover them: turn these off rather than fail every run.",
+      "matchManagers": ["nix"],
+      "matchPackageNames": ["/^https:\\/\\/github\\.com\\/grmhay\\//"],
+      "enabled": false
+    }
+  ],
+  "hostRules": [
+    {
+      "description": "Tag lookups (github-tags) use the read-only fine-grained PAT stored as the Mend org secret GH_RO_PAT: the Mend job token only reaches this repository, so it cannot see the private grmhay/* service repos. hostType github-tags keeps the app token for PRs, branches and issues. The PAT is read-only Contents on vm-service, packer-service, dhcp-service and dns-service (#25).",
+      "hostType": "github-tags",
+      "matchHost": "api.github.com",
+      "token": "{{ secrets.GH_RO_PAT }}"
     }
   ]
 }
