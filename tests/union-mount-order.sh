@@ -21,8 +21,9 @@
 # Debian 13 and RHEL 10 (`systemd --test` runs unprivileged). Not a flake
 # check: nixpkgs' systemd (262) no longer orders a fuse mount before
 # local-fs.target, so the old unit's cycle does not show there. Run it in `nix develop` on a
-# Debian 13 workstation. SYSTEMD= names another binary, UNITS= the directory of
-# its stock units (default: the host's unit search path).
+# Debian 13 workstation (a Union Store host or not). Needs unprivileged user
+# namespaces (see boot). SYSTEMD= names another binary, UNITS= the directory of
+# its stock units (default: /usr/lib/systemd/system).
 # Usage: tests/union-mount-order.sh   (from the checkout root, or set ROOT)
 # DEBUG=1 prints systemd's warnings; KEEP=1 keeps the scratch units and dumps.
 set -euo pipefail
@@ -33,6 +34,7 @@ role="$root/ansible/roles/nix_union_store"
 # 2.30.0's): what the default profile's lib/systemd/system holds.
 installed="$root/tests/fixtures/nix-units"
 systemd="${SYSTEMD:-/usr/lib/systemd/systemd}"
+units="${UNITS:-/usr/lib/systemd/system}"
 work="$(mktemp -d)"
 if [ -n "${KEEP:-}" ]; then echo "work dir: $work" >&2; else trap 'rm -rf "$work"' EXIT; fi
 
@@ -128,15 +130,30 @@ EOF
 }
 
 # boot <name>: the initial transaction to multi-user.target, with this host's
-# units first on the search path and no generators (the host's own fstab and
+# units, then the stock units, and no generators (the host's own fstab and
 # the like stay out). Writes <dir>/dump (units, their jobs and dependencies)
 # and <dir>/log (warnings: each ordering cycle and the job dropped to break it).
+#
+# Nothing of the machine running the test leaks in, even when it is itself a
+# Union Store host: its /etc/systemd/system (its own nix-store.mount and the
+# daemon's drop-ins) is not on the search path, and systemd reads, in a private
+# mount namespace, a mountinfo without /nix and /cvmfs*. Otherwise it takes the
+# live union for nix-store.mount, already active, and the boot gives it no job.
+# systemd refuses --test as root, so the namespace that bind-mounts the copy
+# over /proc/<pid>/mountinfo maps root, and a nested one maps back to this user.
 boot() {
   local dir="$work/$1"
   mkdir -p "$work/no-generators"
-  SYSTEMD_UNIT_PATH="$dir:${UNITS:-}" SYSTEMD_GENERATOR_PATH="$work/no-generators" \
+  awk '$5 != "/nix" && $5 !~ "^/nix/" && $5 !~ "^/cvmfs"' /proc/self/mountinfo > "$work/mountinfo"
+  # shellcheck disable=SC2016 # the inner sh expands its own arguments
+  SYSTEMD_UNIT_PATH="$dir:$units" SYSTEMD_GENERATOR_PATH="$work/no-generators" \
     SYSTEMD_LOG_LEVEL=warning SYSTEMD_LOG_TARGET=console \
-    "$systemd" --test --system --no-pager --unit=multi-user.target > "$dir/dump" 2> "$dir/log"
+    unshare --user --map-root-user --mount sh -c \
+    'mount --bind "$1" "/proc/$$/mountinfo" &&
+     exec unshare --user --map-user="$2" --map-group="$3" \
+       "$4" --test --system --no-pager --unit=multi-user.target' \
+    sh "$work/mountinfo" "$(id -u)" "$(id -g)" "$systemd" > "$dir/dump" 2> "$dir/log" \
+    || { sed 's/^/       /' "$dir/log"; exit 2; }
   if [ -n "${DEBUG:-}" ]; then cat "$dir/log" >&2; fi
 }
 
