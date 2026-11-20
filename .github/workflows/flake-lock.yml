@@ -24,7 +24,7 @@ jobs:
   update:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Reads the private service inputs, as in ci.yml (#37).
       - uses: DeterminateSystems/nix-installer-action@v16
         with:
