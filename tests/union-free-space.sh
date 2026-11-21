@@ -22,7 +22,7 @@ fi
 root="${ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 role="$root/ansible/roles/nix_union_store"
 work="$(mktemp -d)"
-trap 'umount "$work/store" 2>/dev/null || true; umount "$work/rw" 2>/dev/null || true; rm -rf "$work"' EXIT
+trap 'umount "$work/store" "$work/rw" "$work/lower" 2>/dev/null || true; rm -rf "$work"' EXIT
 
 fails=0
 pass() { printf 'ok   %s\n' "$1"; }
@@ -30,9 +30,12 @@ fail() { printf 'FAIL %s\n' "$1"; fails=$((fails + 1)); }
 check() { local name="$1"; shift; if "$@"; then pass "$name"; else fail "$name"; fi; }
 
 # The RW Branch: 3 GiB free, under mergerfs's own 4 GiB default floor and over
-# Nix's 2G min-free. The Lower Store: a plain directory, mounted read-only.
+# Nix's 2G min-free.
+# The Lower Store is a writable tmpfs tagged RO, which mergerfs would count in
+# the union's free space: the Repository's read-only mount it leaves out anyway.
 mkdir -p "$work/rw" "$work/lower" "$work/store"
 mount -t tmpfs -o size=3G tmpfs "$work/rw"
+mount -t tmpfs -o size=2G tmpfs "$work/lower"
 echo lower > "$work/lower/in-lower"
 
 # role_var <expr>: a Jinja expression over the role's defaults.
@@ -63,10 +66,18 @@ writes() {
 mount_union "$(role_var mergerfs_options)"
 check "the role's options: a RW Branch with 3 GiB free takes writes" writes new-path
 check "the role's options: the Lower Store still reads through" grep -qx lower "$work/store/in-lower"
+# Nix's auto-GC reads the free space of /nix/store, the union; mergerfs's floor
+# applies to the RW Branch. They must be the same number, or Nix sees the Lower
+# Store's free space too and does not collect while mergerfs refuses writes.
+avail() { df -B1 --output=avail "$1" | tail -n 1; }
+# floor: the mounted union's minfreespace, in bytes.
+floor() { python3 -c 'import os, sys; print(os.getxattr(sys.argv[1], "user.mergerfs.minfreespace").decode())' "$work/store/.mergerfs"; }
+check "the role's options: the union's free space is the RW Branch's" \
+  test "$(avail "$work/store")" = "$(avail "$work/rw")"
 umount "$work/store"
 rm -f "$work/rw/new-path"
 
-refuses() { ! writes "$1" > /dev/null; }
+union_refuses_write() { ! writes "$1" > /dev/null; }
 
 # A play that runs one of the role's task files here, as this user (no become).
 cat > "$work/play.yml" <<'EOF'
@@ -87,29 +98,32 @@ free_space_task() {
     -e "tasks_file=$role/tasks/union_free_space.yml" \
     -e "nix_union_control_file=$work/store/.mergerfs" "$@" > "$work/run.log" 2>&1
 }
-# changed: the last run changed something.
-changed() { grep -Eq 'changed=[1-9]' "$work/run.log"; }
-unchanged() { grep -q 'changed=0' "$work/run.log"; }
-ran() { free_space_task "$@" || { sed 's/^/       /' "$work/run.log"; return 1; }; }
+# play_changed / play_unchanged: what the last run reported.
+play_changed() { grep -Eq 'changed=[1-9]' "$work/run.log"; }
+play_unchanged() { grep -q 'changed=0' "$work/run.log"; }
+play_ran() { free_space_task "$@" || { sed 's/^/       /' "$work/run.log"; return 1; }; }
 
-# A union mounted before the floor was set (every host before #81) keeps
-# mergerfs's default until it is remounted: a new unit leaves it as it is.
-mount_union "$(role_var mergerfs_options | sed 's/,minfreespace=[^,]*//')"
-check "a union on mergerfs's default floor refuses writes" refuses old-floor
-check "union_free_space.yml lowers the floor of a mounted union" ran
-check "union_free_space.yml reports the change" changed
+# A union mounted before #81 (every host) keeps mergerfs's default floor and
+# free-space sum until it is remounted: a new unit leaves it as it is.
+mount_union "$(role_var mergerfs_options | sed 's/,minfreespace=[^,]*//; s/,statfs_ignore=[^,]*//')"
+check "a union on mergerfs's default floor refuses writes" union_refuses_write old-floor
+check "union_free_space.yml --check on it: reports the change" eval 'play_ran --check && play_changed'
+check "union_free_space.yml --check on it: leaves the floor as it was" test "$(floor)" = 4294967295
+check "union_free_space.yml sets a mounted union's floor and free space" play_ran
+check "union_free_space.yml reports the change" play_changed
 check "the mounted union now takes writes" writes after-task
-check "union_free_space.yml again: nothing to change" ran
-check "union_free_space.yml again: reports no change" unchanged
+check "the mounted union's free space is now the RW Branch's" \
+  test "$(avail "$work/store")" = "$(avail "$work/rw")"
+check "union_free_space.yml again: nothing to change" play_ran
+check "union_free_space.yml again: reports no change" play_unchanged
 
 # A floor at or above Nix's min-free: mergerfs would stop writes before Nix's
 # GC runs. The run stops before it touches the union.
-refused() {
+play_refuses_floor() {
   ! free_space_task "$@" && grep -q 'must be under nix_min_free' "$work/run.log"
 }
-check "a floor equal to min-free is refused" refused -e nix_union_minfreespace=2G -e nix_min_free=2G
-check "a floor above min-free is refused" refused -e nix_union_minfreespace=4G -e nix_min_free=2G
-floor() { python3 -c 'import os, sys; print(os.getxattr(sys.argv[1], "user.mergerfs.minfreespace").decode())' "$work/store/.mergerfs"; }
+check "a floor equal to min-free is refused" play_refuses_floor -e nix_union_minfreespace=2G -e nix_min_free=2G
+check "a floor above min-free is refused" play_refuses_floor -e nix_union_minfreespace=4G -e nix_min_free=2G
 check "a refused floor leaves the mounted union's as it was" test "$(floor)" = 1073741824
 umount "$work/store"
 

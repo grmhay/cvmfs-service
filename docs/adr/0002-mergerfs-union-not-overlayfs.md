@@ -39,6 +39,10 @@ flip is simply new files on the RO branch — no remount, no stale entries. The 
   kernel caching keeps this cheap, but it is measurable; spike S2 records the numbers.
 - `cache.files=auto-full` is required so executables can be mmapped. The option set in
   `nix_union_store/defaults/main.yml` is the output of spike S2, not a guess to be tuned ad hoc.
+  Two options came later, from the fleet, not S2 (#81): `minfreespace=1G`, because mergerfs's own 4 GiB
+  floor stopped every write to `/nix/store` ("Read-only file system") on hosts with less free on `/`;
+  and `statfs_ignore=ro`, so the union's free space, which Nix's `min-free` GC reads, is the RW
+  Branch's alone. The floor stays under `min-free`, so Nix collects before mergerfs refuses writes.
 - Local GC deletes only from the RW Branch; the Lower Store is immutable to the host.
 - mergerfs must be present before Nix starts: `nix-store.mount` is ordered before `nix-daemon`, and
   the CVMFS mount is static (fstab, no autofs) so `RequiresMountsFor` can hold it.

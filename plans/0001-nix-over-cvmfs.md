@@ -143,9 +143,10 @@ static fstab mount `nix.hayweb.org /cvmfs/nix.hayweb.org cvmfs defaults,_netdev 
 - `nix-store.mount`: `What=/nix/.rw-store/store=RW:/cvmfs/nix.hayweb.org/nix/store=RO`, `Type=fuse.mergerfs`,
   `Options=category.create=ff,inodecalc=path-hash,cache.files=auto-full,cache.negative_entry=0,cache.entry=1,allow_other,use_ino`
   (final option set from spike S2), `RequiresMountsFor=/cvmfs/nix.hayweb.org`, `Before=nix-daemon.service`.
-  Plus `minfreespace=1G` (#81): mergerfs's own 4 GiB floor stopped writes to the RW Branch ("Read-only
-  file system") on hosts with less free, before Nix's `min-free` GC could run. The floor stays under
-  `min-free`, the role refuses a run otherwise, and a mounted union gets it live
+  Plus `minfreespace=1G` and `statfs_ignore=ro` (#81, ADR 0002): mergerfs's own 4 GiB floor stopped
+  writes to the RW Branch ("Read-only file system") on hosts with less free, before Nix's `min-free` GC
+  could run. The floor stays under `min-free`, the role refuses a run otherwise, the union reports the
+  RW Branch's free space alone, and a mounted union gets both live
   (`docs/runbooks/union-store-read-only.md`, `tests/union-free-space.sh`, run by hand like the boot-order test).
 - `/etc/nix/nix.conf`:
   `experimental-features = nix-command flakes local-overlay-store`,

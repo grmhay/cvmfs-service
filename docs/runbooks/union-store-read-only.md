@@ -9,9 +9,11 @@ Store, so every create fails with `EROFS` (#81).
 
 1. Look: `df -h /nix/.rw-store` (the RW Branch lives on `/`), and the floor the mounted union has:
    `sudo getfattr --only-values -n user.mergerfs.minfreespace /nix/store/.mergerfs` (bytes).
-2. A floor of `4294967295` (4 GiB, mergerfs's own default) means a union mounted before #81: re-run
-   "cvmfs: clients" for the host. `tasks/union_free_space.yml` lowers it to `nix_union_minfreespace`
-   (1G) live, without a remount.
+2. A floor of `4294967295` (what mergerfs reports for its own 4 GiB default) means a union mounted
+   before #81: re-run the host's template, "cvmfs: clients", or "cvmfs: publisher" or "cvmfs: builders"
+   for those hosts. `tasks/union_free_space.yml` lowers the floor to `nix_union_minfreespace` (1G,
+   `1073741824`) live, without a remount, and sets `statfs_ignore=ro`, so `df /nix/store` shows the
+   RW Branch's free space, as Nix's `min-free` GC reads it.
 3. Free space: `sudo systemctl start nix-gc.service` (the weekly GC, `--delete-older-than 30d`), then
    anything else on `/`, such as old journals or Docker images. The CVMFS client cache also lives
    on `/` (`/var/lib/cvmfs`): a host short on space gets a lower `cvmfs_quota_limit_mb` in NetBox.

@@ -1,6 +1,7 @@
 ---
 # The RW Branch's free-space floor (#81): nix_union_minfreespace, which
-# mergerfs_options passes to every new mount of the union.
+# mergerfs_options passes to every new mount of the union, with statfs_ignore=ro
+# so that the union's free space, which Nix's min-free reads, is the RW Branch's.
 #
 # tests/union-free-space.sh runs this file against a scratch mergerfs.
 
@@ -19,28 +20,36 @@
 
 # A mounted union keeps the options it was mounted with: a new unit file, a
 # daemon reload and `state: started` leave it as it is (see union.yml). So a
-# union mounted on mergerfs's own 4 GiB floor, before #81, is moved to the
-# role's through its control file, live: no remount, the daemon keeps running.
-# mergerfs reads the value back in bytes. No control file: no union mounted
-# yet, and its first mount takes the floor from the unit.
-- name: Set the mounted union's free-space floor
+# union mounted before #81, on mergerfs's own 4 GiB floor and counting every
+# branch's free space, gets the role's settings through its control file,
+# live: no remount, the daemon keeps running. mergerfs reads minfreespace back
+# in bytes. No control file: no union mounted yet, and its first mount takes
+# both from the unit. In check mode it reads, and reports what it would set.
+- name: Set the mounted union's free-space floor and free-space reporting
   become: true
+  check_mode: false
   ansible.builtin.command:
     argv:
       - "{{ ansible_facts.python.executable | default('/usr/bin/python3') }}"
       - -c
       - |
         import os, sys
-        path, want = sys.argv[1], sys.argv[2]
-        key = "user.mergerfs.minfreespace"
+        path, dry, settings = sys.argv[1], sys.argv[2] == "True", sys.argv[3:]
         if not os.path.exists(path):
             print("no union")
-        elif os.getxattr(path, key).decode() == want:
-            print("unchanged")
-        else:
-            os.setxattr(path, key, want.encode())
-            print("changed")
+            sys.exit()
+        changed = False
+        for setting in settings:
+            name, want = setting.split("=", 1)
+            key = "user.mergerfs." + name
+            if os.getxattr(path, key).decode() != want:
+                changed = True
+                if not dry:
+                    os.setxattr(path, key, want.encode())
+        print("changed" if changed else "unchanged")
       - "{{ nix_union_control_file }}"
-      - "{{ nix_union_minfreespace | ansible.builtin.human_to_bytes }}"
+      - "{{ ansible_check_mode }}"
+      - "minfreespace={{ nix_union_minfreespace | ansible.builtin.human_to_bytes }}"
+      - statfs_ignore=ro
   register: _union_floor
   changed_when: _union_floor.stdout == "changed"
