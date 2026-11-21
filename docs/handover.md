@@ -11,8 +11,8 @@ the same evening; since 2026-11-15 they page PagerDuty. **Rollouts: `base` (#31)
 closed, and `proxmox-node` (#33) is on all 9 (Saddlehorn reaches the Cache
 through a host route since 2026-11-19). New VMs join on first boot (ansible-lab-config#125).** 34 hosts run the Union Store.
 
-The repo side of #23 is merged (#36, then the fixes #39, #41, #52 and #53) and released as collection
-`v0.6.4` (e4ab9cb), which ansible-lab-config pins (its bc6393aa). #26, #28, #30, #35, #37, #41, #42 and #44 are closed. The fleet came back cleanly from the reboots of 2026-11-01. The weekly GC, which had never
+The repo side of #23 is merged (#36, then the fixes #39, #41, #52 and #53). The collection is at
+**`v0.6.6`** (fe83ed9, 2026-11-20), which ansible-lab-config pins (its 4953d632, #189). #26, #28, #30, #35, #37, #41, #42 and #44 are closed. The fleet came back cleanly from the reboots of 2026-11-01. The weekly GC, which had never
 finished anywhere, was fixed on 2026-11-03 (#42). Since revision 8 (2026-11-04) the Lower Store is one nested
 catalog at `/nix` (#44, ADR 0006), and published paths pass `nix store verify`. Revision 9 (the nixpkgs
 bump #49) is the Soak's first counted Publish, and the revision-flip criterion passed on it. GC now finishes on
@@ -20,6 +20,20 @@ every union host but logs `BUG:` lines (#50). On 2026-11-05 every manual Soak cr
 being one canary to cache Mode and back, with no hand repair, on `v0.6.4`. On 2026-11-06 every host got an
 explicit Group and Channel in NetBox (#30), and the inventory groups hosts by Group. See "Since 2026-11-06"
 and "Since 2026-10-30" below.
+
+## Since 2026-11-20 afternoon
+
+This section supersedes everything below where they differ.
+
+| Item | State on the evening of 2026-11-20 |
+|---|---|
+| #81 (`/nix/store` "Read-only file system") | **Fixed in v0.6.6** (#84), closed. mergerfs's own `minfreespace` is 4 GiB: below it the RW Branch takes no creates, the only branch left is the read-only Lower Store, so every write to `/nix/store` failed with `EROFS` while `/` still had 3.9 GiB free, and Nix's `min-free = 2G` GC never ran first. `mergerfs_options` now carries `minfreespace=1G` (`nix_union_minfreespace`, which the role refuses at or above `nix_min_free`) and `statfs_ignore=ro`, so `df /nix/store`, which Nix's GC reads, is the RW Branch's free space. A mounted union keeps its options until a remount, so `tasks/union_free_space.yml` sets both live through `/nix/store/.mergerfs` (no remount, no daemon restart; check mode reports drift). ADR 0002 records the two options as from the fleet, not S2. Runbook: `docs/runbooks/union-store-read-only.md`. Test: `tests/union-free-space.sh` (real mergerfs in a user+mount namespace, by hand in `nix develop`, 15 checks) |
+| Rollout of v0.6.6 | Tagged on fe83ed9 (#85); ansible-lab-config pins it (#189, 4953d632, re-vendored with only `grmhay.cvmfs_service`). **Only claudecourse has it so far**: "cvmfs: clients" task 286, green, `changed=2`; the floor read back `1073741824`, `statfs_ignore` `ro`, `df /` = `df /nix/store`, and `nix develop` worked again with 3.4 GB free on `/`. **Every other Union Store host still has the 4 GiB floor live** until its next "cvmfs: clients", "cvmfs: publisher" or "cvmfs: builders" run; the small VMs (quota 4000 MB in NetBox) are the ones near it. Check a host with `sudo getfattr --only-values -n user.mergerfs.minfreespace /nix/store/.mergerfs` (`4294967295` = not yet) |
+| `tests/union-mount-order.sh` | **Fixed** (#82). Its 4 FAILs were the test host's own Union Store leaking into `systemd --test`: the live `/nix/store` mount (systemd saw `nix-store.mount` already active, so no start job) and `/etc/systemd/system` through the default unit path. `boot()` now runs systemd in a private mount namespace over a mountinfo without `/nix` and `/cvmfs*`, and `UNITS` defaults to `/usr/lib/systemd/system`. 47/47; it still catches the #35 cycle when `Before=local-fs.target` is put back. Needs unprivileged user namespaces |
+| #50 (GC `BUG:` lines) | Still open. Another session documented it as upstream `local-overlay://` behaviour, the RW Branch is collected: `docs/runbooks/union-gc.md` (#83, #86) |
+| Renovate | #73 and #74 (GitHub Actions bumps) are merged; #77 (nix-installer-action v23) waits for a human |
+| Next | (1) Roll v0.6.6 to every Union Store host by Group ("cvmfs: clients" with the Group's hosts, then "cvmfs: publisher" and "cvmfs: builders"), small VMs first. (2) Cloud stays **on hold** (#27, #4, #34), then #23 |
+| Workstation (claudecourse) | Union Store host since 2026-11-15, so hand-run tests here see a live union (both tests above cope). `/` is 19 GB with ~3.4 GB free: Nix's GC (`max-free = 10G`) will start collecting during builds |
 
 ## Since 2026-11-16 evening (to 2026-11-20)
 
