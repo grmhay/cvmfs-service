@@ -1,5 +1,8 @@
 # Runbook: repository garbage collection (not before year two)
 
+This is the Repository's GC. For the weekly GC on hosts in union Mode and its `BUG:` lines, see
+`union-gc.md`.
+
 Retention policy: nothing is deleted from the repository in its first year. When that changes:
 
 1. Enumerate what every Channel still references:
