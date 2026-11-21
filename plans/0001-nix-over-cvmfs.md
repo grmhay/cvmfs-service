@@ -95,7 +95,7 @@ cvmfs-service/
   ansible/playbooks/{publisher,cache,clients,builders}.yml   # inventory from NetBox (nb_inventory)
   secrets/*.enc.yaml                                         # SOPS/age: minio rw key, repo masterkey, nixbuild key
   docs/adr/0001-nix-over-cvmfs.md  0002-mergerfs-union-not-overlayfs.md  0003-nginx-reverse-cache-not-squid.md
-  docs/runbooks/{publish-abort,resign,gc,minio-cert-cutover}.md
+  docs/runbooks/{publish-abort,resign,gc,minio-cert-cutover,union-store-read-only}.md
   CONTEXT.md  CLAUDE.md  README.md  renovate.json
 ```
 
@@ -143,6 +143,11 @@ static fstab mount `nix.hayweb.org /cvmfs/nix.hayweb.org cvmfs defaults,_netdev 
 - `nix-store.mount`: `What=/nix/.rw-store/store=RW:/cvmfs/nix.hayweb.org/nix/store=RO`, `Type=fuse.mergerfs`,
   `Options=category.create=ff,inodecalc=path-hash,cache.files=auto-full,cache.negative_entry=0,cache.entry=1,allow_other,use_ino`
   (final option set from spike S2), `RequiresMountsFor=/cvmfs/nix.hayweb.org`, `Before=nix-daemon.service`.
+  Plus `minfreespace=1G` and `statfs_ignore=ro` (#81, ADR 0002): mergerfs's own 4 GiB floor stopped
+  writes to the RW Branch ("Read-only file system") on hosts with less free, before Nix's `min-free` GC
+  could run. The floor stays under `min-free`, the role refuses a run otherwise, the union reports the
+  RW Branch's free space alone, and a mounted union gets both live
+  (`docs/runbooks/union-store-read-only.md`, `tests/union-free-space.sh`, run by hand like the boot-order test).
 - `/etc/nix/nix.conf`:
   `experimental-features = nix-command flakes local-overlay-store`,
   `store = local-overlay://?lower-store=local%3Froot%3D%2Fcvmfs%2Fnix.hayweb.org%26read-only%3Dtrue&upper-layer=/nix/.rw-store/store&check-mount=false`,

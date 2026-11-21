@@ -44,6 +44,11 @@
         {{ ['/etc/systemd/system/fleet-profile.service', '/etc/systemd/system/fleet-profile.timer']
         + (_fleet_links.files | map(attribute='path') | list) }}
 
+# Before the unit that carries it: a floor at or above nix_min_free stops the
+# run here. A union already mounted gets the floor live (#81).
+- name: The union's free-space floor
+  ansible.builtin.include_tasks: union_free_space.yml
+
 # First: on a first run, /nix/store is readable only until the move below.
 - name: The union's mount unit and the daemon's units
   ansible.builtin.include_tasks: daemon_units_boot_order.yml

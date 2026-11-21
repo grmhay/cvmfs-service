@@ -129,7 +129,8 @@ nix_gc_older_than: 30d
 nix_min_free: 2G
 nix_max_free: 10G
 
-# mergerfs option set — final values come out of spike S2.
+# mergerfs option set — out of spike S2, except minfreespace and statfs_ignore
+# (#81, ADR 0002).
 #   category.create=ff     writes go to the first (RW) branch
 #   inodecalc=path-hash    stable inodes regardless of CVMFS renumbering per revision
 #   cache.files=auto-full  page cache on: executables are mmapped
@@ -141,7 +142,24 @@ nix_max_free: 10G
 # mergerfs despite 1 branches not being different from the mountpoint
 # filesystem"): it never guarded anything. What keeps the union off a missing
 # Repository is nix-store.mount's RequiresMountsFor on the client view.
-mergerfs_options: "category.create=ff,inodecalc=path-hash,cache.files=auto-full,cache.negative_entry=0,cache.entry=1,cache.attr=1,allow_other,fsname=nixstore"
+#   minfreespace           see nix_union_minfreespace
+#   statfs_ignore=ro       the union's free space is the RW Branch's alone: Nix's
+#                          min-free reads /nix/store, mergerfs's floor the RW Branch,
+#                          and they must agree (#81). Underscore: this mergerfs
+#                          rejects the dotted statfs.ignore spelling
+mergerfs_options: "category.create=ff,inodecalc=path-hash,cache.files=auto-full,cache.negative_entry=0,cache.entry=1,cache.attr=1,allow_other,fsname=nixstore,minfreespace={{ nix_union_minfreespace }},statfs_ignore=ro"
+
+# mergerfs's free-space floor for the RW Branch (#81). Below it, mergerfs puts
+# no new file there, and the only branch left is the read-only Lower Store, so
+# every write to /nix/store fails with "Read-only file system". mergerfs's own
+# default is 4 GiB, which stopped writes on hosts with 3.9 GiB free on /. It
+# must stay under nix_min_free, so Nix's GC runs before mergerfs stops writes:
+# union.yml refuses a run otherwise.
+nix_union_minfreespace: 1G
+# mergerfs's control file in the mounted union: union_free_space.yml sets the
+# floor of a union mounted before #81 through it. A variable only so that
+# tests/union-free-space.sh can point the task at a scratch union.
+nix_union_control_file: /nix/store/.mergerfs
 
 # RHEL 10 has no distro package; upstream publishes RPMs per release (spike S1
 # confirms el10.aarch64). Debian 13 ships 2.40.2 natively.
