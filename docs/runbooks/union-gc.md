@@ -40,13 +40,15 @@ is bumped.
    "deletes" them again.
 3. Nothing sets `bytesFreed` in that case. GC declares it without a value
    (`uint64_t bytesFreed;`, [gc.cc#L656-L659](https://github.com/NixOS/nix/blob/2.30.0/src/libstore/gc.cc#L656-L659))
-   and adds whatever was in it to the total, hence figures like 7×10¹⁰ MiB.
+   and adds whatever was in it to the total, hence figures like 7×10¹⁰ MiB. Fixed upstream in Nix 2.36.0
+   ([NixOS/nix#16269](https://github.com/NixOS/nix/issues/16269)); the deleted count stays wrong.
 4. When GC tries to invalidate a path whose referrer is still registered, `invalidatePathChecked` throws
    `PathInUse`. GC catches it and prints `BUG: …`
    ([gc.cc#L779-L780](https://github.com/NixOS/nix/blob/2.30.0/src/libstore/gc.cc#L779-L780)), which points
    at [NixOS/nix#11923](https://github.com/NixOS/nix/issues/11923).
 
-Upstream report for points 2 and 3: not filed yet (see #50).
+Upstream report for point 2: not filed yet (see #50). It reproduces on plain overlayfs too, so it is not
+mergerfs-specific.
 
 ## Check that the RW Branch is really collected
 
