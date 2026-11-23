@@ -46,9 +46,31 @@
   when: ansible_os_family == "Debian"
   notify: Reload nginx
 
+# nginx resolves the Origin's name when it starts. At boot that lookup can lose the race with the
+# network (#89) and the config test fails. Keep retrying until it resolves; at 10s the default
+# start limit (5 in 10s) is never hit.
+- name: Drop-in directory for nginx
+  become: true
+  ansible.builtin.file:
+    path: /etc/systemd/system/nginx.service.d
+    state: directory
+    mode: "0755"
+
+- name: Restart nginx on failure
+  become: true
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/nginx.service.d/cvmfs-restart.conf
+    mode: "0644"
+    content: |
+      # Managed by cvmfs-service (#89).
+      [Service]
+      Restart=on-failure
+      RestartSec=10s
+
 - name: Start nginx
   become: true
   ansible.builtin.systemd:
     name: nginx
     enabled: true
     state: started
+    daemon_reload: true
