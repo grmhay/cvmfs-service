@@ -1,6 +1,6 @@
 # Handover
 
-State of the work as of **2026-11-20**. Design: `plans/0001-nix-over-cvmfs.md`; vocabulary: `CONTEXT.md`.
+State of the work as of **2026-11-23**. Design: `plans/0001-nix-over-cvmfs.md`; vocabulary: `CONTEXT.md`.
 The work left is the spec #23 (phases 2–5, from the canaries to the whole fleet) and its tickets #24–#34.
 
 Phases 0 and 1 are done. The Repository `nix.hayweb.org` is live: the Publisher's reconciler publishes every
@@ -12,7 +12,7 @@ closed, and `proxmox-node` (#33) is on all 9 (Saddlehorn reaches the Cache
 through a host route since 2026-11-19). New VMs join on first boot (ansible-lab-config#125).** 34 hosts run the Union Store.
 
 The repo side of #23 is merged (#36, then the fixes #39, #41, #52 and #53). The collection is at
-**`v0.6.6`** (fe83ed9, 2026-11-20), which ansible-lab-config pins (its 4953d632, #189). #26, #28, #30, #35, #37, #41, #42 and #44 are closed. The fleet came back cleanly from the reboots of 2026-11-01. The weekly GC, which had never
+**`v0.6.7`** (a9041f8, 2026-11-23), which ansible-lab-config pins (its 834e58b9, #190). #26, #28, #30, #35, #37, #41, #42 and #44 are closed. The fleet came back cleanly from the reboots of 2026-11-01. The weekly GC, which had never
 finished anywhere, was fixed on 2026-11-03 (#42). Since revision 8 (2026-11-04) the Lower Store is one nested
 catalog at `/nix` (#44, ADR 0006), and published paths pass `nix store verify`. Revision 9 (the nixpkgs
 bump #49) is the Soak's first counted Publish, and the revision-flip criterion passed on it. GC now finishes on
@@ -20,6 +20,17 @@ every union host but logs `BUG:` lines (#50). On 2026-11-05 every manual Soak cr
 being one canary to cache Mode and back, with no hand repair, on `v0.6.4`. On 2026-11-06 every host got an
 explicit Group and Channel in NetBox (#30), and the inventory groups hosts by Group. See "Since 2026-11-06"
 and "Since 2026-10-30" below.
+
+## Since 2026-11-23
+
+This section supersedes everything below where they differ.
+
+| Item | State on 2026-11-23, 11:30 MST |
+|---|---|
+| Cache outage (#89) | **cache1's nginx was down from 2026-11-22 01:00 MST to 2026-11-23 10:59 MST.** cache1 rebooted at 01:00. At boot, nginx's config test could not resolve `minio.hayweb.org` (`host not found in upstream … cvmfs-cache.conf:31`). `networking.service` finished the same second and the lookup timed out after 20s. nginx had `Restart=no`, so it stayed `failed` and `:80` refused connections. The whitelist was never at risk: `cvmfs-resign` succeeded at 03:00 on 11-23, and the whitelist expires 2026-12-23. Clients kept running from their own caches but could fetch nothing new. Restored by hand with `systemctl start nginx`. DNS and `nginx -t` were fine by then |
+| Fix: v0.6.7 | `cvmfs_nginx_cache` installs `/etc/systemd/system/nginx.service.d/cvmfs-restart.conf` with `Restart=on-failure` and `RestartSec=10s` (#90), so nginx keeps retrying until the Origin's name resolves. At 10s apart it never reaches the default start limit (5 in 10s). A transient unit with a failing `ExecStartPre` confirmed that `Restart=on-failure` retries it. Tagged `v0.6.7` (#91, a9041f8) and pinned in ansible-lab-config (#190, 834e58b9). **Applied:** "cvmfs: cache" task 290, green, `changed=2`; cache1 reads back `Restart=on-failure`, `RestartUSec=10s`. nginx was not restarted. Task 289 ran before #190 was merged, so it used v0.6.6 and changed nothing. The other templates now use 0.6.7 too, but their roles are unchanged from 0.6.6 |
+| Alerting gaps (homelab-opscontrolplane, **no issue yet**) | (1) *CVMFS whitelist probe has no good reading* paged PagerDuty at **10:07 on 11-22**, about 9 hours after the Cache went down, though the rule looks back one hour. Find out why it fired late: the rule's pending period, no data counting as a failure, or the PagerDuty route. (2) Nothing alerts on the Cache itself being down. The whitelist probe caught this only because it fetches through cache1 |
+| Next | Unchanged from "Since 2026-11-20 afternoon": roll v0.6.6's union floor (now in v0.6.7) to every Union Store host by Group, small VMs first. Then open the two alerting issues above |
 
 ## Since 2026-11-20 afternoon
 
